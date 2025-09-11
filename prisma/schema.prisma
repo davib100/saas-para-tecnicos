@@ -1,0 +1,254 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo para empresas (multi-tenant)
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  cnpj        String?  @unique
+  email       String   @unique
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  logo        String?
+  plan        String   @default("basic") // basic, premium, enterprise
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  users       User[]
+  clients     Client[]
+  products    Product[]
+  orders      ServiceOrder[]
+  invoices    Invoice[]
+  backups     Backup[]
+  settings    CompanySettings?
+
+  @@map("companies")
+}
+
+// Modelo para usuários do sistema
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  password    String
+  role        String   @default("user") // admin, user, technician
+  avatar      String?
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders      ServiceOrder[]
+  activities  Activity[]
+
+  @@map("users")
+}
+
+// Modelo para clientes
+model Client {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  cpf         String?
+  cnpj        String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  photo       String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders      ServiceOrder[]
+
+  @@map("clients")
+}
+
+// Modelo para produtos/equipamentos
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  brand       String?
+  model       String?
+  category    String?
+  description String?
+  price       Decimal? @db.Decimal(10, 2)
+  cost        Decimal? @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  minStock    Int      @default(0)
+  barcode     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+
+  @@map("products")
+}
+
+// Modelo para ordens de serviço
+model ServiceOrder {
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  status          String   @default("pending") // pending, analysis, approved, in_progress, completed, cancelled
+  priority        String   @default("normal") // low, normal, high, urgent
+  equipment       String
+  brand           String?
+  model           String?
+  serialNumber    String?
+  problem         String
+  diagnosis       String?
+  solution        String?
+  observations    String?
+  estimatedValue  Decimal? @db.Decimal(10, 2)
+  finalValue      Decimal? @db.Decimal(10, 2)
+  laborCost       Decimal? @db.Decimal(10, 2)
+  partsCost       Decimal? @db.Decimal(10, 2)
+  estimatedDate   DateTime?
+  completedDate   DateTime?
+  warrantyDays    Int?
+  photos          String[] // Array de URLs das fotos
+  documents       String[] // Array de URLs dos documentos
+  isWarranty      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relacionamentos
+  companyId       String
+  company         Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          Client @relation(fields: [clientId], references: [id])
+  technicianId    String?
+  technician      User? @relation(fields: [technicianId], references: [id])
+  items           OrderItem[]
+  activities      Activity[]
+  invoice         Invoice?
+
+  @@map("service_orders")
+}
+
+// Modelo para itens da ordem de serviço
+model OrderItem {
+  id          String   @id @default(cuid())
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  totalPrice  Decimal  @db.Decimal(10, 2)
+  description String?
+  type        String   @default("product") // product, service, labor
+  createdAt   DateTime @default(now())
+
+  // Relacionamentos
+  orderId     String
+  order       ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Modelo para atividades/histórico
+model Activity {
+  id          String   @id @default(cuid())
+  type        String   // status_change, comment, photo_added, etc.
+  description String
+  metadata    Json?    // Dados adicionais em JSON
+  createdAt   DateTime @default(now())
+
+  // Relacionamentos
+  orderId     String
+  order       ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+
+  @@map("activities")
+}
+
+// Modelo para faturas/cobranças
+model Invoice {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  status      String   @default("pending") // pending, paid, overdue, cancelled
+  amount      Decimal  @db.Decimal(10, 2)
+  dueDate     DateTime
+  paidDate    DateTime?
+  paymentMethod String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orderId     String   @unique
+  order       ServiceOrder @relation(fields: [orderId], references: [id])
+
+  @@map("invoices")
+}
+
+// Modelo para backups
+model Backup {
+  id          String   @id @default(cuid())
+  type        String   // daily, manual, export
+  status      String   @default("pending") // pending, processing, completed, failed
+  fileName    String
+  fileSize    Int?
+  filePath    String?
+  downloadUrl String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  // Relacionamentos
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("backups")
+}
+
+// Modelo para configurações da empresa
+model CompanySettings {
+  id                    String   @id @default(cuid())
+  autoBackup            Boolean  @default(true)
+  backupTime            String   @default("02:00") // Horário do backup automático
+  backupRetentionDays   Int      @default(30)
+  emailNotifications    Boolean  @default(true)
+  smsNotifications      Boolean  @default(false)
+  defaultWarrantyDays   Int      @default(90)
+  taxRate               Decimal? @db.Decimal(5, 2)
+  currency              String   @default("BRL")
+  timezone              String   @default("America/Sao_Paulo")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relacionamentos
+  companyId             String   @unique
+  company               Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
