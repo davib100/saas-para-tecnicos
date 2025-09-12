@@ -1,34 +1,77 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["public"]
 }
 
-// Modelo para empresas (multi-tenant)
-model Company {
-  id          String   @id @default(cuid())
-  name        String
-  cnpj        String?  @unique
-  email       String   @unique
-  phone       String?
-  address     String?
-  city        String?
-  state       String?
-  zipCode     String?
-  logo        String?
-  plan        String   @default("basic") // basic, premium, enterprise
+model Profile {
+  id          String   @id @db.Uuid
+  name        String   @db.VarChar(255)
+  email       String   @unique @db.VarChar(320)
+  role        Role     @default(USER)
+  avatar      String?  @db.Text
+  phone       String?  @db.VarChar(20)
   isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  preferences Json     @default("{}")
+  metadata    Json     @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relacionamentos
-  users       User[]
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders      ServiceOrder[]
+  activities  Activity[]
+
+  @@index([email])
+  @@index([companyId])
+  @@index([role])
+  @@index([isActive])
+  @@map("profiles")
+  @@schema("public")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  TECHNICIAN
+  USER
+  VIEWER
+
+  @@schema("public")
+}
+
+model Company {
+  id          String      @id @default(cuid())
+  name        String      @db.VarChar(255)
+  slug        String      @unique @db.VarChar(100)
+  cnpj        String?     @unique @db.VarChar(18)
+  email       String      @unique @db.VarChar(320)
+  phone       String?     @db.VarChar(20)
+  website     String?     @db.VarChar(255)
+  address     String?     @db.VarChar(500)
+  city        String?     @db.VarChar(100)
+  state       String?     @db.VarChar(2)
+  zipCode     String?     @db.VarChar(10)
+  country     String      @default("BR") @db.VarChar(2)
+  logo        String?     @db.Text
+  plan        Plan        @default(BASIC)
+  status      CompanyStatus @default(ACTIVE)
+  maxUsers    Int         @default(5)
+  maxStorage  BigInt      @default(1073741824)
+  timezone    String      @default("America/Sao_Paulo") @db.VarChar(50)
+  currency    String      @default("BRL") @db.VarChar(3)
+  language    String      @default("pt-BR") @db.VarChar(5)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  users       Profile[]
   clients     Client[]
   products    Product[]
   orders      ServiceOrder[]
@@ -36,219 +79,369 @@ model Company {
   backups     Backup[]
   settings    CompanySettings?
 
+  @@index([slug])
+  @@index([status])
+  @@index([plan])
   @@map("companies")
+  @@schema("public")
 }
 
-// Modelo para usuários do sistema
-model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  name        String
-  password    String
-  role        String   @default("user") // admin, user, technician
-  avatar      String?
-  isActive    Boolean  @default(true)
-  lastLogin   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum Plan {
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+  CUSTOM
 
-  // Relacionamentos
-  companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orders      ServiceOrder[]
-  activities  Activity[]
-
-  @@map("users")
+  @@schema("public")
 }
 
-// Modelo para clientes
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  TRIAL
+  EXPIRED
+
+  @@schema("public")
+}
+
 model Client {
-  id          String   @id @default(cuid())
-  name        String
-  email       String?
-  phone       String?
-  cpf         String?
-  cnpj        String?
-  address     String?
-  city        String?
-  state       String?
-  zipCode     String?
-  photo       String?
-  notes       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id          String     @id @default(cuid())
+  type        ClientType @default(INDIVIDUAL)
+  name        String     @db.VarChar(255)
+  email       String?    @db.VarChar(320)
+  phone       String?    @db.VarChar(20)
+  whatsapp    String?    @db.VarChar(20)
+  cpf         String?    @db.VarChar(14)
+  cnpj        String?    @db.VarChar(18)
+  rg          String?    @db.VarChar(20)
+  address     String?    @db.VarChar(500)
+  city        String?    @db.VarChar(100)
+  state       String?    @db.VarChar(2)
+  zipCode     String?    @db.VarChar(10)
+  photo       String?    @db.Text
+  notes       String?    @db.Text
+  tags        String[]   @default([])
+  isActive    Boolean    @default(true)
+  rating      Int?       @db.SmallInt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  // Relacionamentos
   companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   orders      ServiceOrder[]
 
+  @@index([companyId])
+  @@index([email])
+  @@index([cpf])
+  @@index([cnpj])
+  @@index([isActive])
   @@map("clients")
+  @@schema("public")
 }
 
-// Modelo para produtos/equipamentos
-model Product {
-  id          String   @id @default(cuid())
-  name        String
-  brand       String?
-  model       String?
-  category    String?
-  description String?
-  price       Decimal? @db.Decimal(10, 2)
-  cost        Decimal? @db.Decimal(10, 2)
-  stock       Int      @default(0)
-  minStock    Int      @default(0)
-  barcode     String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum ClientType {
+  INDIVIDUAL
+  BUSINESS
 
-  // Relacionamentos
+  @@schema("public")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  sku         String        @unique @db.VarChar(50)
+  name        String        @db.VarChar(255)
+  brand       String?       @db.VarChar(100)
+  model       String?       @db.VarChar(100)
+  category    String?       @db.VarChar(100)
+  description String?       @db.Text
+  price       Decimal?      @db.Decimal(10, 2)
+  cost        Decimal?      @db.Decimal(10, 2)
+  margin      Decimal?      @db.Decimal(5, 2)
+  stock       Int           @default(0)
+  minStock    Int           @default(0)
+  maxStock    Int?
+  unit        String        @default("UN") @db.VarChar(10)
+  barcode     String?       @unique @db.VarChar(50)
+  weight      Decimal?      @db.Decimal(8, 3)
+  dimensions  Json?
+  images      String[]      @default([])
+  tags        String[]      @default([])
+  isActive    Boolean       @default(true)
+  isService   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   orderItems  OrderItem[]
 
+  @@index([companyId])
+  @@index([sku])
+  @@index([category])
+  @@index([isActive])
+  @@index([isService])
   @@map("products")
+  @@schema("public")
 }
 
-// Modelo para ordens de serviço
 model ServiceOrder {
-  id              String   @id @default(cuid())
-  orderNumber     String   @unique
-  status          String   @default("pending") // pending, analysis, approved, in_progress, completed, cancelled
-  priority        String   @default("normal") // low, normal, high, urgent
-  equipment       String
-  brand           String?
-  model           String?
-  serialNumber    String?
-  problem         String
-  diagnosis       String?
-  solution        String?
-  observations    String?
-  estimatedValue  Decimal? @db.Decimal(10, 2)
-  finalValue      Decimal? @db.Decimal(10, 2)
-  laborCost       Decimal? @db.Decimal(10, 2)
-  partsCost       Decimal? @db.Decimal(10, 2)
+  id              String         @id @default(cuid())
+  orderNumber     String         @unique @db.VarChar(50)
+  status          OrderStatus    @default(PENDING)
+  priority        Priority       @default(NORMAL)
+  equipment       String         @db.VarChar(255)
+  brand           String?        @db.VarChar(100)
+  model           String?        @db.VarChar(100)
+  serialNumber    String?        @db.VarChar(100)
+  problem         String         @db.Text
+  diagnosis       String?        @db.Text
+  solution        String?        @db.Text
+  observations    String?        @db.Text
+  estimatedValue  Decimal?       @db.Decimal(10, 2)
+  finalValue      Decimal?       @db.Decimal(10, 2)
+  laborCost       Decimal?       @db.Decimal(10, 2)
+  partsCost       Decimal?       @db.Decimal(10, 2)
+  discount        Decimal?       @db.Decimal(10, 2)
   estimatedDate   DateTime?
   completedDate   DateTime?
-  warrantyDays    Int?
-  photos          String[] // Array de URLs das fotos
-  documents       String[] // Array de URLs dos documentos
-  isWarranty      Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  deliveryDate    DateTime?
+  warrantyUntil   DateTime?
+  photos          String[]       @default([])
+  documents       String[]       @default([])
+  isWarranty      Boolean        @default(false)
+  tags            String[]       @default([])
+  satisfaction    Int?           @db.SmallInt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  // Relacionamentos
   companyId       String
-  company         Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   clientId        String
-  client          Client @relation(fields: [clientId], references: [id])
-  technicianId    String?
-  technician      User? @relation(fields: [technicianId], references: [id])
+  client          Client         @relation(fields: [clientId], references: [id])
+  technicianId    String?        @db.Uuid
+  technician      Profile?       @relation(fields: [technicianId], references: [id])
+  
   items           OrderItem[]
   activities      Activity[]
   invoice         Invoice?
 
+  @@index([companyId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([clientId])
+  @@index([technicianId])
+  @@index([createdAt])
   @@map("service_orders")
+  @@schema("public")
 }
 
-// Modelo para itens da ordem de serviço
-model OrderItem {
-  id          String   @id @default(cuid())
-  quantity    Int
-  unitPrice   Decimal  @db.Decimal(10, 2)
-  totalPrice  Decimal  @db.Decimal(10, 2)
-  description String?
-  type        String   @default("product") // product, service, labor
-  createdAt   DateTime @default(now())
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING
+  COMPLETED
+  DELIVERED
+  CANCELLED
+  WARRANTY
 
-  // Relacionamentos
+  @@schema("public")
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@schema("public")
+}
+
+model OrderItem {
+  id          String       @id @default(cuid())
+  type        ItemType     @default(PRODUCT)
+  quantity    Int          @default(1)
+  unitPrice   Decimal      @db.Decimal(10, 2)
+  totalPrice  Decimal      @db.Decimal(10, 2)
+  description String?      @db.VarChar(500)
+  discount    Decimal?     @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now())
+
   orderId     String
   order       ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId   String?
-  product     Product? @relation(fields: [productId], references: [id])
+  product     Product?     @relation(fields: [productId], references: [id])
 
+  @@index([orderId])
+  @@index([productId])
   @@map("order_items")
+  @@schema("public")
 }
 
-// Modelo para atividades/histórico
-model Activity {
-  id          String   @id @default(cuid())
-  type        String   // status_change, comment, photo_added, etc.
-  description String
-  metadata    Json?    // Dados adicionais em JSON
-  createdAt   DateTime @default(now())
+enum ItemType {
+  PRODUCT
+  SERVICE
+  LABOR
 
-  // Relacionamentos
+  @@schema("public")
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  title       String       @db.VarChar(255)
+  description String       @db.Text
+  metadata    Json         @default("{}")
+  isSystem    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
   orderId     String
   order       ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User @relation(fields: [userId], references: [id])
+  userId      String       @db.Uuid
+  user        Profile      @relation(fields: [userId], references: [id])
 
+  @@index([orderId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
   @@map("activities")
+  @@schema("public")
 }
 
-// Modelo para faturas/cobranças
+enum ActivityType {
+  STATUS_CHANGE
+  COMMENT
+  FILE_UPLOAD
+  PAYMENT
+  MESSAGE
+  CALL
+  EMAIL
+  SYSTEM
+
+  @@schema("public")
+}
+
 model Invoice {
-  id          String   @id @default(cuid())
-  number      String   @unique
-  status      String   @default("pending") // pending, paid, overdue, cancelled
-  amount      Decimal  @db.Decimal(10, 2)
-  dueDate     DateTime
-  paidDate    DateTime?
-  paymentMethod String?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String        @id @default(cuid())
+  number        String        @unique @db.VarChar(50)
+  status        InvoiceStatus @default(PENDING)
+  type          InvoiceType   @default(SERVICE)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  discount      Decimal       @default(0) @db.Decimal(10, 2)
+  tax           Decimal       @default(0) @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  paidDate      DateTime?
+  paymentMethod String?       @db.VarChar(50)
+  paymentRef    String?       @db.VarChar(100)
+  notes         String?       @db.Text
+  tags          String[]      @default([])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  // Relacionamentos
-  companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orderId     String   @unique
-  order       ServiceOrder @relation(fields: [orderId], references: [id])
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orderId       String        @unique
+  order         ServiceOrder  @relation(fields: [orderId], references: [id])
 
+  @@index([companyId])
+  @@index([number])
+  @@index([status])
+  @@index([dueDate])
   @@map("invoices")
+  @@schema("public")
 }
 
-// Modelo para backups
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+
+  @@schema("public")
+}
+
+enum InvoiceType {
+  SERVICE
+  PRODUCT
+  MIXED
+
+  @@schema("public")
+}
+
 model Backup {
-  id          String   @id @default(cuid())
-  type        String   // daily, manual, export
-  status      String   @default("pending") // pending, processing, completed, failed
-  fileName    String
-  fileSize    Int?
-  filePath    String?
-  downloadUrl String?
+  id          String       @id @default(cuid())
+  type        BackupType   @default(FULL)
+  status      BackupStatus @default(PENDING)
+  fileName    String       @db.VarChar(255)
+  fileSize    BigInt?
+  filePath    String?      @db.VarChar(500)
+  downloadUrl String?      @db.Text
+  checksum    String?      @db.VarChar(64)
+  description String?      @db.Text
+  isAutomatic Boolean      @default(true)
   expiresAt   DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime     @default(now())
   completedAt DateTime?
 
-  // Relacionamentos
   companyId   String
-  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  @@index([companyId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
   @@map("backups")
+  @@schema("public")
 }
 
-// Modelo para configurações da empresa
+enum BackupType {
+  FULL
+  INCREMENTAL
+  MANUAL
+
+  @@schema("public")
+}
+
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  EXPIRED
+
+  @@schema("public")
+}
+
 model CompanySettings {
   id                    String   @id @default(cuid())
   autoBackup            Boolean  @default(true)
-  backupTime            String   @default("02:00") // Horário do backup automático
+  backupFrequency       String   @default("daily") @db.VarChar(20)
+  backupTime            String   @default("02:00") @db.VarChar(5)
   backupRetentionDays   Int      @default(30)
   emailNotifications    Boolean  @default(true)
   smsNotifications      Boolean  @default(false)
+  whatsappNotifications Boolean  @default(false)
+  pushNotifications     Boolean  @default(true)
   defaultWarrantyDays   Int      @default(90)
   taxRate               Decimal? @db.Decimal(5, 2)
-  currency              String   @default("BRL")
-  timezone              String   @default("America/Sao_Paulo")
+  workingHours          Json     @default("{}")
+  workingDays           String[] @default(["monday", "tuesday", "wednesday", "thursday", "friday"])
+  theme                 String   @default("light") @db.VarChar(20)
+  logo                  String?  @db.Text
+  colors                Json     @default("{}")
+  apiKeys               Json     @default("{}")
+  webhooks              Json     @default("[]")
+  customFields          Json     @default("{}")
+  preferences           Json     @default("{}")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  // Relacionamentos
   companyId             String   @unique
-  company               Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_settings")
+  @@schema("public")
 }

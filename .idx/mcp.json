@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "igniter": {
+      "command": "npx",
+      "args": [
+        "@igniter-js/mcpserver"
+      ]
+    },
+    "firebase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "firebase-tools@latest",
+        "experimental:mcp",
+        "--only",
+        "auth,firestore"
+      ]
+    }
+  }
+}

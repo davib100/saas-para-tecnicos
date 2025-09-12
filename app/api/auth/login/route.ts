@@ -1,55 +1,40 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { loginSchema } from "@/lib/validations"
-import { verifyPassword, generateToken } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+
+import { type NextRequest, NextResponse } from "next/server";
+import { loginSchema } from "@/lib/validations";
+import { authenticateUser, generateToken } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    const body = await request.json();
 
-    // Validate input
-    const validatedData = loginSchema.parse(body)
+    // 1. Validar os dados de entrada (email e senha)
+    const validatedData = loginSchema.parse(body);
 
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: validatedData.email },
-      include: { company: true },
-    })
+    // 2. Autenticar o usuário usando a nova função centralizada
+    // Esta função agora lança erros específicos e amigáveis
+    const user = await authenticateUser(validatedData.email, validatedData.password);
 
-    if (!user) {
-      return NextResponse.json({ message: "Invalid email or password" }, { status: 401 })
-    }
+    // 3. Gerar o token JWT para o usuário autenticado
+    const token = generateToken(user);
 
-    // Verify password
-    const isValidPassword = await verifyPassword(validatedData.password, user.password)
-
-    if (!isValidPassword) {
-      return NextResponse.json({ message: "Invalid email or password" }, { status: 401 })
-    }
-
-    // Check if user is active
-    if (!user.isActive) {
-      return NextResponse.json({ message: "Account is deactivated" }, { status: 401 })
-    }
-
-    // Update last login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() },
-    })
-
-    // Generate JWT token
-    const token = generateToken(user.id, user.companyId)
-
-    // Return user data (without password)
-    const { password, ...userWithoutPassword } = user
-
+    // 4. Retornar o token e os dados do usuário
     return NextResponse.json({
+      success: true,
       token,
-      user: userWithoutPassword,
-    })
+      user,
+    });
+
   } catch (error) {
-    console.error("Login error:", error)
-    return NextResponse.json({ message: "Internal server error" }, { status: 500 })
+    // 5. Capturar qualquer erro lançado durante o processo
+    // A mensagem de erro será a que definimos em `authenticateUser`
+    const errorMessage = error instanceof Error ? error.message : "Ocorreu um erro inesperado.";
+    
+    console.error("Login API Error:", errorMessage);
+
+    // Retorna uma resposta de erro clara para o frontend
+    return NextResponse.json(
+      { success: false, message: errorMessage },
+      { status: 401 } // 401 Unauthorized é o status apropriado para falhas de login
+    );
   }
 }
