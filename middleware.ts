@@ -1,55 +1,53 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-import { verifyToken } from "@/lib/auth"
+import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  // Public routes that don't require authentication
-  const publicRoutes = [
+  // 1. Ignorar todas as rotas da API NextAuth para evitar conflitos e loops
+  if (pathname.startsWith('/api/auth')) {
+    return NextResponse.next();
+  }
+
+  // 2. Definir as rotas de página que são publicamente acessíveis
+  const publicPages = [
     "/login",
     "/register",
-    "/forgot-password", // Permitir acesso à página para solicitar redefinição
-    "/reset-password",  // Permitir acesso à página para criar nova senha
-    "/api/auth/login",
-    "/api/auth/register",
-    "/api/auth/forgot-password" // Permitir acesso à API para solicitar redefinição
-  ]
+    "/forgot-password",
+    "/reset-password",
+  ];
 
-  if (publicRoutes.includes(pathname)) {
-    return NextResponse.next()
+  const isPublicPage = publicPages.some(path => pathname.startsWith(path));
+
+  // 3. Obter o token de sessão do usuário
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
+  // 4. Se a rota é pública, permitir o acesso. 
+  // O Next.js cuidará de redirecionar o usuário se ele já estiver logado e tentar acessar o login.
+  if (isPublicPage) {
+    return NextResponse.next();
   }
-
-  // Check for auth token
-  const token = request.headers.get("authorization")?.replace("Bearer ", "") || request.cookies.get("auth_token")?.value
-
+  
+  // 5. Se a rota é protegida e não há token, redirecionar para o login
   if (!token) {
-    return NextResponse.redirect(new URL("/login", request.url))
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // Verify token
-  try {
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      // Se a verificação falhar (token inválido mas não expirado, etc)
-      return NextResponse.redirect(new URL("/login", request.url))
-    }
-
-    // Add user info to headers for API routes
-    const response = NextResponse.next()
-    if (decoded.userId && decoded.companyId) {
-        response.headers.set("x-user-id", decoded.userId)
-        response.headers.set("x-company-id", decoded.companyId)
-    }
-
-    return response
-  } catch (error) {
-    // Se o token estiver expirado ou malformado, verifyToken pode lançar um erro
-    console.error("Middleware token verification error:", error);
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
+  // 6. Se o token existe e a rota é protegida, permitir acesso e enriquecer headers
+  const response = NextResponse.next();
+  if (token.id) response.headers.set("x-user-id", token.id as string);
+  if (token.companyId) response.headers.set("x-company-id", token.companyId as string);
+  
+  return response;
 }
 
+// O matcher agora é mais simples: ele executa o middleware em tudo, 
+// exceto nos arquivos estáticos. A lógica de qual rota proteger fica toda dentro da função.
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|public).*)"],
-}
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+};

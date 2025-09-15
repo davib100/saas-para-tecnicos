@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import type React from "react"
 import { useState, useEffect } from "react"
@@ -16,21 +16,18 @@ export default function LoginPage() {
   const [loginData, setLoginData] = useState({ email: "", password: "" })
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const router = useRouter()
+  const router = useRouter() // router ainda pode ser útil para outras coisas no futuro
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Exibe mensagens de sucesso (ex: após redefinir a senha)
     const message = searchParams.get('message')
     if (message) {
       setSuccessMessage(decodeURIComponent(message))
     }
-    // Exibe erros do NextAuth (ex: credenciais inválidas)
     const errorParam = searchParams.get('error')
     if (errorParam) {
-      // Decodifica a mensagem de erro padrão do NextAuth ou usa a nossa.
       if (errorParam === "CredentialsSignin") {
-        // Tentamos obter uma mensagem mais específica do `signIn` na próxima renderização
+        setError("Credenciais inválidas. Verifique seu e-mail e senha.")
       } else {
         setError(errorParam)
       }
@@ -44,7 +41,7 @@ export default function LoginPage() {
     setSuccessMessage(null)
 
     const result = await signIn("credentials", {
-      redirect: false,
+      redirect: false, // Manter o controle do redirecionamento para mostrar erros
       email: loginData.email,
       password: loginData.password,
     })
@@ -52,11 +49,16 @@ export default function LoginPage() {
     setIsLoading(false)
 
     if (result?.ok) {
-      // Redireciona para a home ou para a página anterior
+      // SOLUÇÃO: Forçar um recarregamento completo da página.
+      // Isso resolve a condição de corrida onde a navegação do Next.js (router.push)
+      // é mais rápida do que o navegador ao definir o cookie de sessão retornado pela API.
+      // Ao forçar o recarregamento, garantimos que a próxima requisição para o servidor
+      // (para a callbackUrl) já incluirá o novo cookie de sessão, e o middleware
+      // irá reconhecer o usuário como autenticado.
       const callbackUrl = searchParams.get('callbackUrl') || '/'
-      router.push(callbackUrl)
+      window.location.href = callbackUrl;
     } else {
-      // A mensagem de erro específica que configuramos no NextAuth é retornada aqui
+      // Mostra o erro retornado pela API de credenciais ou uma mensagem padrão
       setError(result?.error || "Ocorreu um erro desconhecido.")
     }
   }

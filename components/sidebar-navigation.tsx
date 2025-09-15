@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react"
 import { RealtimeStatus } from "./realtime-status"
+import { signOut } from "next-auth/react"
 
 interface SidebarNavigationProps {
   currentView: string
@@ -144,6 +145,7 @@ export function SidebarNavigation({ currentView, onViewChange }: SidebarNavigati
             <Button
               variant="ghost"
               className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10 transition-all duration-200 h-11 text-sm"
+              onClick={() => signOut({ callbackUrl: '/login' })}
             >
               <LogOut className="w-4 h-4 mr-3" />
               <span className="font-medium">Sair</span>
@@ -224,6 +226,7 @@ export function SidebarNavigation({ currentView, onViewChange }: SidebarNavigati
             "w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10 transition-all duration-200 h-10 lg:h-12 text-sm",
             isCollapsed && "px-2 lg:px-3",
           )}
+          onClick={() => signOut({ callbackUrl: '/login' })}
         >
           <LogOut className={cn("w-4 h-4 lg:w-5 lg:h-5", !isCollapsed && "mr-2 lg:mr-3")} />
           {!isCollapsed && <span className="font-medium">Sair</span>}
