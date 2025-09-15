@@ -23,7 +23,7 @@ interface Client {
 
 // Dados de ilustração removidos.
 
-function ClientManagement() {
+export default function ClientManagement() {
   // O estado agora é inicializado como um array vazio.
   const [clients, setClients] = useState<Client[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -164,7 +164,6 @@ function ClientManagement() {
                     </Button>
                     <Button
                       variant="destructive"
-                      outline
                       size="sm"
                       onClick={() => handleDeleteClient(client.id)}
                     >
@@ -184,5 +183,3 @@ function ClientManagement() {
     </div>
   )
 }
-
-export { ClientManagement }

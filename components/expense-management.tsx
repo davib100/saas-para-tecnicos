@@ -84,7 +84,7 @@ const categories = [
   { value: "outros", label: "Outros", color: "bg-gray-100 text-gray-800" },
 ]
 
-export function ExpenseManagement() {
+export default function ExpenseManagement() {
   const [expenses, setExpenses] = useState<Expense[]>(mockExpenses)
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")

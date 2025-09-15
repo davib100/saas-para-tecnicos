@@ -38,7 +38,7 @@ interface Product {
 
 // Dados de ilustração removidos
 
-function ProductManagement() {
+export default function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -208,7 +208,7 @@ function ProductManagement() {
                         </div>
                         <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleEditProduct(product)}><Edit className="w-4 h-4" /></Button>
-                        <Button variant="destructive" outline size="sm" onClick={() => handleDeleteProduct(product.id)}><Trash2 className="w-4 h-4" /></Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteProduct(product.id)}><Trash2 className="w-4 h-4" /></Button>
                         </div>
                     </div>
                     ))}
@@ -250,7 +250,7 @@ function ProductManagement() {
                         </div>
                         <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleEditProduct(product)}><Edit className="w-4 h-4" /></Button>
-                        <Button variant="destructive" outline size="sm" onClick={() => handleDeleteProduct(product.id)}><Trash2 className="w-4 h-4" /></Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteProduct(product.id)}><Trash2 className="w-4 h-4" /></Button>
                         </div>
                     </div>
                     ))}
@@ -263,5 +263,3 @@ function ProductManagement() {
     </div>
   )
 }
-
-export { ProductManagement }

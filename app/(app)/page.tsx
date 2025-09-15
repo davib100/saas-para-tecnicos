@@ -1,271 +1,145 @@
 'use client'
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ClipboardList, DollarSign, TrendingUp, BarChart3, Plus, Eye, Activity, Users, Package, AlertTriangle } from "lucide-react"
+import { 
+  ClipboardList, 
+  DollarSign, 
+  TrendingUp, 
+  BarChart3, 
+  Plus, 
+  Eye, 
+  Activity, 
+  Users, 
+  Package, 
+  AlertTriangle, 
+  Menu, 
+  Settings, // Ícone de Configurações
+  Loader2 
+} from "lucide-react"
 import { SidebarNavigation } from "@/components/sidebar-navigation"
+import { CompanySetupModal } from "@/components/company-setup-modal"
 
-// --- COMPONENTES DE ESQUELETO (LOADING) ---
+// Componentes dinâmicos
+const ClientManagement = dynamic(() => import("@/components/client-management"))
+const ProductManagement = dynamic(() => import("@/components/product-management"))
+const OrderManagement = dynamic(() => import("@/components/order-management"))
+const ReportsModule = dynamic(() => import("@/components/reports-module"))
+const SettingsModule = dynamic(() => import("@/components/settings-module"))
 
-// Esqueleto para a tela de Clientes
-const ClientManagementSkeleton = () => (
-  <div className="p-6 space-y-6 animate-pulse">
-    <div className="flex items-center justify-between">
-      <div>
-        <Skeleton className="h-8 w-64 mb-2" />
-        <Skeleton className="h-4 w-80" />
-      </div>
-      <Skeleton className="h-10 w-32" />
-    </div>
-    <Card><CardContent className="pt-6"><Skeleton className="h-10 w-full" /></CardContent></Card>
-    <Card>
-      <CardHeader>
-        <Skeleton className="h-7 w-48" />
-        <Skeleton className="h-4 w-72" />
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-            <div className="flex items-center gap-4">
-              <Skeleton className="h-10 w-10 rounded-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-64" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-8 w-8" />
-              <Skeleton className="h-8 w-8" />
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  </div>
-);
+// Tipos e Constantes
+interface Order { id: string; cliente: string; equipamento: string; status: string; valor: number; }
+interface DashboardStats { osAndamento: number; osConcluidas: number; orcamentosPendentes: number; receitaMensal: number; }
+const STATUS_BADGE_CLASSES: Record<string, string> = { "Concluído": "bg-green-100 text-green-800", "Em execução": "bg-purple-100 text-purple-800", "Pendente": "bg-yellow-100 text-yellow-800", "Cancelado": "bg-red-100 text-red-800" };
+const DASHBOARD_CARDS = [ { key: 'osAndamento', label: 'OS em Andamento', icon: Activity }, { key: 'osConcluidas', label: 'OS Concluídas', icon: ClipboardList }, { key: 'orcamentosPendentes', label: 'Orçamentos', icon: DollarSign }, { key: 'receitaMensal', label: 'Receita Mensal', icon: TrendingUp, format: 'currency' } ] as const;
 
-// Esqueleto para a tela de Produtos
-const ProductManagementSkeleton = () => (
-    <div className="p-6 space-y-6 animate-pulse">
-        <div className="flex items-center justify-between">
-            <div>
-                <Skeleton className="h-8 w-72 mb-2" />
-                <Skeleton className="h-4 w-80" />
-            </div>
-            <Skeleton className="h-10 w-36" />
-        </div>
-        <div className="flex gap-4 border-b"><Skeleton className="h-10 w-32" /><Skeleton className="h-10 w-32" /></div>
-        <Card><CardContent className="pt-6"><Skeleton className="h-10 w-full" /></CardContent></Card>
-        <Card>
-            <CardHeader><Skeleton className="h-7 w-56" /></CardHeader>
-            <CardContent className="space-y-4">
-                {Array.from({ length: 2 }).map((_, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-4">
-                        <Skeleton className="h-10 w-10 rounded-full" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-4 w-48" />
-                            <Skeleton className="h-3 w-56" />
-                        </div>
-                        </div>
-                        <div className="flex items-center gap-2"><Skeleton className="h-8 w-8" /><Skeleton className="h-8 w-8" /></div>
-                    </div>
-                ))}
-            </CardContent>
-        </Card>
-    </div>
-);
+// Atalhos Rápidos atualizados para refletir a nova estrutura
+const SHORTCUTS = [
+  { view: 'clients', label: 'Clientes', icon: Users },
+  { view: 'products', label: 'Produtos', icon: Package },
+  { view: 'reports', label: 'Relatórios', icon: BarChart3 },
+  { view: 'settings', label: 'Configurações', icon: Settings } // Aponta para as configurações
+] as const;
 
-// Esqueleto para a tela de Ordens de Serviço
-const OrderManagementSkeleton = () => (
-    <div className="p-6 space-y-6 animate-pulse">
-        <div className="flex items-center justify-between">
-            <div>
-                <Skeleton className="h-8 w-64 mb-2" />
-                <Skeleton className="h-4 w-80" />
-            </div>
-            <Skeleton className="h-10 w-32" />
-        </div>
-        <Card><CardContent className="pt-6"><Skeleton className="h-10 w-full" /></CardContent></Card>
-        <Card>
-            <CardHeader>
-                <Skeleton className="h-7 w-56" />
-                <Skeleton className="h-4 w-72" />
-            </CardHeader>
-            <CardContent className="space-y-4">
-                 {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-2 flex-1">
-                            <Skeleton className="h-4 w-1/4" />
-                            <Skeleton className="h-3 w-1/2" />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <Skeleton className="h-6 w-24 rounded-full" />
-                            <Skeleton className="h-5 w-20" />
-                            <Skeleton className="h-8 w-8" />
-                        </div>
-                    </div>
-                ))}
-            </CardContent>
-        </Card>
-    </div>
-);
+// Utils
+const getStatusBadgeClass = (status: string): string => STATUS_BADGE_CLASSES[status] || "bg-gray-100 text-gray-800";
+const formatCurrency = (value: number): string => `R$ ${value.toLocaleString("pt-BR")}`;
 
-// Fallback genérico para outros componentes
-const GenericSkeleton = () => (
-    <div className="p-6 animate-pulse"><Card><CardHeader><Skeleton className="h-8 w-64"/></CardHeader><CardContent><Skeleton className="h-40 w-full"/></CardContent></Card></div>
-)
+// Componentes de UI (StatCard, OrderItem, etc. - sem alterações)
+const EmptyRecentOrders = () => ( <div className="text-center text-muted-foreground p-10 border-2 border-dashed rounded-lg mt-4"> <AlertTriangle className="mx-auto h-12 w-12" /> <h3 className="mt-4 text-lg font-semibold">Nenhuma OS Recente</h3> <p className="mt-2 text-sm">Novas ordens de serviço aparecerão aqui.</p> </div> )
+const StatCard = ({ stat, value }: { stat: typeof DASHBOARD_CARDS[number], value: number }) => { const Icon = stat.icon; const displayValue = 'format' in stat && stat.format === 'currency' ? formatCurrency(value) : value.toString(); return ( <Card> <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0"> <CardTitle className="text-sm font-medium">{stat.label}</CardTitle> <Icon className="h-4 w-4 text-muted-foreground" /> </CardHeader> <CardContent><div className="text-2xl font-bold">{displayValue}</div></CardContent> </Card> ) }
+const OrderItem = ({ order, onNavigate }: { order: Order, onNavigate: (view: string) => void }) => ( <div className="flex items-center justify-between py-2 border-b last:border-0"> <div className="flex-1"> <p className="font-semibold truncate">{order.equipamento}</p> <p className="text-sm text-muted-foreground truncate">{order.cliente}</p> </div> <div className="flex items-center gap-4 ml-4"> <Badge variant="outline" className={getStatusBadgeClass(order.status)}>{order.status}</Badge> <Button variant="ghost" size="icon" onClick={() => onNavigate("orders")}><Eye className="w-4 h-4" /></Button> </div> </div> )
 
+// Dashboard View
+const DashboardView = ({ stats, orders, onNavigate }: { stats: DashboardStats; orders: Order[]; onNavigate: (view: string) => void }) => ( <div className="space-y-8 p-4 md:p-6 lg:p-8"> <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"> <div> <h1 className="text-3xl font-bold text-foreground">Dashboard</h1> <p className="text-muted-foreground">Visão geral do seu negócio</p> </div> <Button onClick={() => onNavigate("orders")}><Plus className="w-4 h-4 mr-2" /> Nova OS</Button> </header> <section className="grid grid-cols-2 md:grid-cols-4 gap-6"> {DASHBOARD_CARDS.map((stat) => ( <StatCard key={stat.key} stat={stat} value={stats[stat.key]} /> ))} </section> <div className="grid md:grid-cols-3 gap-6"> <Card className="md:col-span-2"> <CardHeader><CardTitle>Ordens de Serviço Recentes</CardTitle></CardHeader> <CardContent> {orders.length > 0 ? ( <div className="space-y-2"> {orders.map(order => ( <OrderItem key={order.id} order={order} onNavigate={onNavigate} /> ))} </div> ) : ( <EmptyRecentOrders /> )} </CardContent> </Card> <Card> <CardHeader><CardTitle>Atalhos Rápidos</CardTitle></CardHeader> <CardContent className="grid grid-cols-2 gap-4"> {SHORTCUTS.map(({ view, label, icon: Icon }) => ( <Button key={view} variant="outline" className="h-20 flex flex-col gap-2" onClick={() => onNavigate(view)}> <Icon className="w-5 h-5" /> <span className="text-xs">{label}</span> </Button> ))} </CardContent> </Card> </div> </div> );
 
-// --- IMPORTAÇÕES DINÂMICAS COM ESQUELETOS ESPECÍFICOS ---
+const LoadingState = () => ( <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> );
 
-const ClientManagement = dynamic(() => import("@/components/client-management").then(m => ({ default: m.ClientManagement })), { ssr: false, loading: () => <ClientManagementSkeleton /> })
-const ProductManagement = dynamic(() => import("@/components/product-management").then(m => ({ default: m.ProductManagement })), { ssr: false, loading: () => <ProductManagementSkeleton /> })
-const OrderManagement = dynamic(() => import("@/components/order-management").then(m => ({ default: m.OrderManagement })), { ssr: false, loading: () => <OrderManagementSkeleton /> })
-
-// Componentes que não precisam de esqueleto customizado por enquanto
-const CashFlowDashboard = dynamic(() => import("@/components/cash-flow-dashboard").then(m => ({ default: m.CashFlowDashboard })), { ssr: false, loading: () => <GenericSkeleton /> })
-const FinancialDashboard = dynamic(() => import("@/components/financial-dashboard").then(m => ({ default: m.FinancialDashboard })), { ssr: false, loading: () => <GenericSkeleton /> })
-const FinancialModule = dynamic(() => import("@/components/financial-module"), { ssr: false, loading: () => <GenericSkeleton /> })
-const ReportsModule = dynamic(() => import("@/components/reports-module").then(m => ({ default: m.ReportsModule })), { ssr: false, loading: () => <GenericSkeleton /> })
-const SettingsModule = dynamic(() => import("@/components/settings-module").then(m => ({ default: m.SettingsModule })), { ssr: false, loading: () => <GenericSkeleton /> })
-const ExpenseManagement = dynamic(() => import("@/components/expense-management").then(m => ({ default: m.ExpenseManagement })), { ssr: false, loading: () => <GenericSkeleton /> })
-
-
-interface Order {
-  id: string; cliente: string; equipamento: string; status: string; valor: number; data: string; problema: string;
-}
-
-const mockOrders: Order[] = [] // Mantido vazio
-
-const getStatusBadgeClass = (status: string): string => {
-  const statusMap: Record<string, string> = {
-    "Entrada": "bg-blue-100 text-blue-800", "Em análise": "bg-yellow-100 text-yellow-800",
-    "Aguardando aprovação": "bg-orange-100 text-orange-800", "Em execução": "bg-purple-100 text-purple-800",
-    "Concluído": "bg-green-100 text-green-800", "Cancelado": "bg-red-100 text-red-800",
-  }
-  return statusMap[status] || "bg-gray-100 text-gray-800"
-}
-
+// Componente Principal
 export default function HomePage() {
-  const [currentView, setCurrentView] = useState("dashboard")
+  const [currentView, setCurrentView] = useState("dashboard");
+  const [isMobile, setIsMobile] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState<any>(null); 
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleViewChange = useCallback((view: string) => {
-    setCurrentView(view)
-    if (window.innerWidth < 768) { setIsSidebarOpen(false); }
-  }, [])
+  useEffect(() => {
+    try {
+        const savedData = localStorage.getItem('companyInfo');
+        if (savedData) setCompanyInfo(JSON.parse(savedData));
+    } catch (error) {
+        console.error("Falha ao ler dados do localStorage:", error);
+    } finally {
+        setIsLoading(false);
+    }
+  }, []);
 
-  const dashboardStats = useMemo(
-    () => ({ osAndamento: 0, osConcluidas: 0, orcamentosPendentes: 0, receitaMensal: 0, clientesAtivos: 0, produtosCadastrados: 0, taxaSucesso: 0 }), []
-  )
-
-  const recentOrders = useMemo(() => mockOrders.slice(0, 3), [])
-
-  const renderCurrentView = () => {
-    const viewMap: { [key: string]: React.ReactNode } = {
-        dashboard: renderDashboard(),
-        clients: <ClientManagement />,
-        products: <ProductManagement />,
-        orders: <OrderManagement />,
-        cashflow: <CashFlowDashboard onBack={() => setCurrentView("dashboard")} />,
-        financial: <FinancialDashboard onBack={() => setCurrentView("dashboard")} />,
-        expenses: <ExpenseManagement />,
-        reports: <ReportsModule />,
-        settings: <SettingsModule />,
-    };
-    return viewMap[currentView] || renderDashboard()
+  const handleSaveCompanyInfo = (data: any) => {
+    const dataWithId = { ...data, id: companyInfo?.id || crypto.randomUUID() };
+    try {
+        localStorage.setItem('companyInfo', JSON.stringify(dataWithId));
+        setCompanyInfo(dataWithId);
+    } catch (error) {
+        console.error("Falha ao salvar dados no localStorage:", error);
+    }
   };
 
-  const EmptyRecentOrders = () => (
-    <div className="text-center text-muted-foreground p-10 border-2 border-dashed rounded-lg">
-        <AlertTriangle className="mx-auto h-12 w-12" />
-        <h3 className="mt-4 text-lg font-semibold">Nenhuma Ordem de Serviço Recente</h3>
-        <p className="mt-2 text-sm">Quando novas ordens de serviço forem criadas, elas aparecerão aqui.</p>
-    </div>
-  );
+  useEffect(() => { const checkScreenSize = () => { const mobile = window.innerWidth < 768; setIsMobile(mobile); if (!mobile) setIsSidebarOpen(false); }; checkScreenSize(); window.addEventListener("resize", checkScreenSize); return () => window.removeEventListener("resize", checkScreenSize); }, []);
 
-  const renderDashboard = () => (
-    <div className="space-y-6 sm:space-y-8 p-4 md:p-6 lg:p-8 animate-fade-in">
-      <header className="relative overflow-hidden rounded-lg sm:rounded-xl bg-primary text-primary-foreground p-6 sm:p-8">
-        <div className="relative z-10">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold mb-1">Dashboard</h1>
-                    <p className="text-primary-foreground/80">Visão geral e rápida do seu negócio.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                     <Button onClick={() => handleViewChange("orders")} size="sm"><Plus className="w-4 h-4 mr-2" /> Nova OS</Button>
-                </div>
+  const handleViewChange = useCallback((view: string) => { setCurrentView(view); if (isMobile) setIsSidebarOpen(false); }, [isMobile]);
+
+  const dashboardStats = useMemo((): DashboardStats => ({ osAndamento: 0, osConcluidas: 0, orcamentosPendentes: 0, receitaMensal: 0 }), []);
+  const recentOrders = useMemo(() => [], []);
+
+  const renderCurrentView = () => {
+    switch (currentView) {
+      case 'dashboard': return <DashboardView stats={dashboardStats} orders={recentOrders} onNavigate={handleViewChange} />;
+      case 'clients': return <ClientManagement />;
+      case 'products': return <ProductManagement />;
+      case 'orders': return <OrderManagement />;
+      case 'reports': return <ReportsModule />;
+      // A rota 'company' foi removida. Agora 'settings' lida com isso.
+      case 'settings': return <SettingsModule companyData={companyInfo} />;
+      default: return <DashboardView stats={dashboardStats} orders={recentOrders} onNavigate={handleViewChange} />;
+    }
+  };
+
+  const renderMainContent = () => {
+      if (isLoading) return <LoadingState />;
+      if (!companyInfo) return <CompanySetupModal isOpen={true} onSave={handleSaveCompanyInfo} />
+      
+      return (
+          <>
+            <SidebarNavigation 
+                currentView={currentView} 
+                onViewChange={handleViewChange} 
+                isMobile={isMobile}
+                isSidebarOpen={isSidebarOpen}
+                setIsSidebarOpen={setIsSidebarOpen} 
+            />
+            <div className="flex flex-col flex-1 w-full overflow-hidden">
+                {isMobile && (
+                <header className="flex items-center justify-between p-4 border-b bg-card">
+                    <h1 className="text-lg font-semibold">TechOS</h1>
+                    <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)}>
+                    <Menu className="w-5 h-5" />
+                    </Button>
+                </header>
+                )}
+                <main className="flex-1 overflow-y-auto bg-muted/40">
+                    {renderCurrentView()}
+                </main>
             </div>
-        </div>
-      </header>
-
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-        <Card className="hover:border-primary/50 transition-colors"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">OS em Andamento</CardTitle><Activity className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold">{dashboardStats.osAndamento}</div></CardContent></Card>
-        <Card className="hover:border-primary/50 transition-colors"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">OS Concluídas</CardTitle><ClipboardList className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold">{dashboardStats.osConcluidas}</div><p className="text-xs text-muted-foreground">neste mês</p></CardContent></Card>
-        <Card className="hover:border-primary/50 transition-colors"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Orçamentos</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold">{dashboardStats.orcamentosPendentes}</div><p className="text-xs text-muted-foreground">pendentes</p></CardContent></Card>
-        <Card className="hover:border-primary/50 transition-colors"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Receita Mensal</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold">R$ {dashboardStats.receitaMensal.toLocaleString("pt-BR")}</div></CardContent></Card>
-      </section>
-
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Ordens de Serviço Recentes</CardTitle>
-            <CardDescription>Últimas OS cadastradas no sistema.</CardDescription>
-          </CardHeader>
-          <CardContent>
-             {recentOrders.length > 0 ? (
-                <div className="space-y-4">
-                {recentOrders.map((order) => (
-                    <div key={order.id} className="flex items-center justify-between">
-                    <div className="min-w-0"><p className="font-semibold truncate">{order.equipamento}</p><p className="text-sm text-muted-foreground">{order.cliente}</p></div>
-                    <div className="flex items-center gap-4">
-                        <Badge variant="outline" className={getStatusBadgeClass(order.status)}>{order.status}</Badge>
-                        <span className="font-medium min-w-fit">R$ {order.valor.toFixed(2)}</span>
-                        <Button variant="ghost" size="icon" onClick={() => handleViewChange("orders")}><Eye className="w-4 h-4" /></Button>
-                    </div>
-                    </div>
-                ))}
-                </div>
-            ) : (
-                <EmptyRecentOrders />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Atalhos Rápidos</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
-            <Button variant="outline" className="flex-col h-20" onClick={() => handleViewChange('clients')}><Users className="w-5 h-5 mb-1"/>Clientes</Button>
-            <Button variant="outline" className="flex-col h-20" onClick={() => handleViewChange('products')}><Package className="w-5 h-5 mb-1"/>Produtos</Button>
-            <Button variant="outline" className="flex-col h-20" onClick={() => handleViewChange('reports')}><BarChart3 className="w-5 h-5 mb-1"/>Relatórios</Button>
-            <Button variant="outline" className="flex-col h-20" onClick={() => handleViewChange('settings')}><Activity className="w-5 h-5 mb-1"/>Config.</Button>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+          </>
+      );
+  }
 
   return (
     <div className="flex h-screen bg-background">
-      <div className="hidden md:flex md:flex-shrink-0">
-        <SidebarNavigation currentView={currentView} onViewChange={handleViewChange} isMobile={false} />
-      </div>
-      <div className="flex flex-col flex-1 w-full">
-        <header className="md:hidden flex items-center justify-between p-4 border-b">
-            <h1 className="text-lg font-semibold">Sistema OS</h1>
-            <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}><Activity className="w-5 h-5" /></Button>
-        </header>
-        {isSidebarOpen && (
-            <div className="md:hidden"><SidebarNavigation currentView={currentView} onViewChange={handleViewChange} isMobile={true} /></div>
-        )}
-        <main className="flex-1 overflow-y-auto">{renderCurrentView()}</main>
-      </div>
+        {renderMainContent()}
     </div>
-  );
+  )
 }
