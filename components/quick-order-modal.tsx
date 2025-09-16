@@ -1,164 +1,254 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useReducer, Reducer } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, FileText, Save, UserPlus } from "lucide-react"
+import { Plus, FileText, Save, UserPlus, Loader2, X } from "lucide-react"
 import { ClientWizard } from "@/components/client-wizard"
 import { OrderPreviewModal } from "@/components/order-preview-modal"
-import { clienteId } from "@/utils/clienteId" // Declare the variable here
+import { CustomerCombobox } from "./customer-combobox"
 
+// Tipos
 interface ServiceItem {
-  id: string; descricao: string; quantidade: number; preco: number;
+  id: string;
+  descricao: string;
+  quantidade: number;
+  preco: number;
+}
+
+interface CustomerData {
+  id: string;
+  name: string;
+  document: string;
 }
 
 interface QuickOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOrderCreated: () => void;
 }
 
-// A lista de clientes foi removida para eliminar dados estáticos.
-const clients: {id: string, nome: string, documento: string}[] = []
+// Lógica do Reducer
+type FormState = {
+  clienteId: string;
+  tipoMaquina: string;
+  marca: string;
+  modelo: string;
+  numeroSerie: string;
+  acessorios: string;
+  problemaDescricao: string;
+  itensServico: ServiceItem[];
+  valorEstimado: number;
+  validadeDias: number;
+  dataEntrada: string;
+};
 
-const tiposMaquina = [
-  "Notebook", "Desktop", "Smartphone", "Tablet", "Televisão", "Geladeira", 
-  "Micro-ondas", "Ar Condicionado", "Impressora", "Outro",
-]
+type FormAction = 
+  | { type: 'UPDATE_FIELD'; field: keyof FormState; value: any }
+  | { type: 'ADD_SERVICE_ITEM' }
+  | { type: 'REMOVE_SERVICE_ITEM'; id: string }
+  | { type: 'UPDATE_SERVICE_ITEM'; id: string; field: keyof ServiceItem; value: string | number }
+  | { type: 'SET_CLIENT'; clientId: string; }
+  | { type: 'CALCULATE_TOTAL' }
+  | { type: 'RESET' };
 
-export function QuickOrderModal({ isOpen, onClose }: QuickOrderModalProps) {
-  const [isClientWizardOpen, setIsClientWizardOpen] = useState(false)
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    clienteId: "", tipoMaquina: "", marca: "", modelo: "", numeroSerie: "", acessorios: "",
+const getInitialState = (): FormState => ({
+    clienteId: "",
+    tipoMaquina: "",
+    marca: "",
+    modelo: "",
+    numeroSerie: "",
+    acessorios: "",
     problemaDescricao: "",
-    itensServico: [{ id: "1", descricao: "", quantidade: 1, preco: 0 }] as ServiceItem[],
-    valorEstimado: 0, validadeDias: 30, dataEntrada: new Date().toISOString().split("T")[0],
-  })
+    itensServico: [{ id: crypto.randomUUID(), descricao: "", quantidade: 1, preco: 0 }],
+    valorEstimado: 0,
+    validadeDias: 30,
+    dataEntrada: new Date().toISOString().split("T")[0],
+});
 
-  const calculateTotal = () => {
-    return formData.itensServico.reduce((total, item) => total + item.quantidade * item.preco, 0)
+const formReducer: Reducer<FormState, FormAction> = (state, action): FormState => {
+  switch (action.type) {
+    case 'UPDATE_FIELD':
+      return { ...state, [action.field]: action.value };
+    case 'ADD_SERVICE_ITEM':
+      return {
+        ...state,
+        itensServico: [
+          ...state.itensServico,
+          { id: crypto.randomUUID(), descricao: "", quantidade: 1, preco: 0 },
+        ],
+      };
+    case 'REMOVE_SERVICE_ITEM':
+        if (state.itensServico.length <= 1) return state; // Não remover o último item
+        return {
+            ...state,
+            itensServico: state.itensServico.filter(item => item.id !== action.id)
+        };
+    case 'UPDATE_SERVICE_ITEM':
+      return {
+        ...state,
+        itensServico: state.itensServico.map(item => 
+          item.id === action.id ? { ...item, [action.field]: action.value } : item
+        )
+      };
+    case 'SET_CLIENT':
+      return { ...state, clienteId: action.clientId };
+    case 'CALCULATE_TOTAL':
+        const total = state.itensServico.reduce((acc, item) => acc + Number(item.quantidade) * Number(item.preco), 0);
+        return { ...state, valorEstimado: total };
+    case 'RESET':
+      return getInitialState();
+    default:
+      return state;
   }
+};
 
-  const addServiceItem = () => {
-    const newId = String(formData.itensServico.length + 1)
-    setFormData({ ...formData, itensServico: [...formData.itensServico, { id: newId, descricao: "", quantidade: 1, preco: 0 }] })
-  }
+export function QuickOrderModal({ isOpen, onClose, onOrderCreated }: QuickOrderModalProps) {
+  const [state, dispatch] = useReducer(formReducer, getInitialState());
+  const [isClientWizardOpen, setIsClientWizardOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<CustomerData | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const updateServiceItem = (index: number, field: keyof ServiceItem, value: string | number) => {
-    const updatedItems = formData.itensServico.map((item, i) => (i === index ? { ...item, [field]: value } : item))
-    setFormData({ ...formData, itensServico: updatedItems })
-  }
-
-  const removeServiceItem = (index: number) => {
-    if (formData.itensServico.length > 1) {
-      const updatedItems = formData.itensServico.filter((_, i) => i !== index)
-      setFormData({ ...formData, itensServico: updatedItems })
+  const handleApiSubmit = async (status: 'DRAFT' | 'BUDGET') => {
+    if (!state.clienteId) {
+      console.error("Cliente é obrigatório.");
+      return;
     }
-  }
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/service-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...state, status }),
+      });
 
-  const handleSaveAsDraft = () => {
-    console.log("Salvando como rascunho:", formData)
-    onClose()
-  }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Falha ao salvar a ordem de serviço");
+      }
+      
+      onOrderCreated();
+      handleClose();
+
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAsDraft = () => handleApiSubmit("DRAFT");
 
   const handleGenerateOrder = () => {
-    const valorTotal = calculateTotal()
-    setFormData({ ...formData, valorEstimado: valorTotal })
-    setIsPreviewOpen(true)
-  }
-
-  const resetForm = () => {
-    setFormData({
-        clienteId: "", tipoMaquina: "", marca: "", modelo: "", numeroSerie: "", acessorios: "",
-        problemaDescricao: "",
-        itensServico: [{ id: "1", descricao: "", quantidade: 1, preco: 0 }],
-        valorEstimado: 0, validadeDias: 30, dataEntrada: new Date().toISOString().split("T")[0],
-    })
+    if (!state.clienteId || !selectedClient) {
+      console.error("Selecione um cliente para gerar a ordem.");
+      return;
+    }
+    dispatch({ type: 'CALCULATE_TOTAL' });
+    setIsPreviewOpen(true);
   }
 
   const handleClose = () => {
-    resetForm()
-    onClose()
+    if (isSaving) return;
+    dispatch({ type: 'RESET' });
+    setSelectedClient(null);
+    onClose();
   }
 
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto shadow-modern border-0">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl"><FileText className="w-6 h-6 text-primary" />Nova Ordem de Serviço Rápida</DialogTitle>
-            <DialogDescription>Crie uma nova OS rapidamente preenchendo as informações essenciais</DialogDescription>
-          </DialogHeader>
+           <DialogHeader> ... </DialogHeader>
+           <div className="space-y-6">
+              {/* Cliente */}
+              <Card className="shadow-md border-0 gradient-card">
+                 <CardHeader>...</CardHeader>
+                 <CardContent>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                         <CustomerCombobox
+                            value={state.clienteId}
+                            onChange={(clientId) => dispatch({ type: 'SET_CLIENT', clientId })}
+                            onClientSelected={setSelectedClient}
+                         />
+                      </div>
+                      <Button onClick={() => setIsClientWizardOpen(true)}>...</Button>
+                    </div>
+                 </CardContent>
+              </Card>
+              
+              {/* Equipamento */}
+              <Card> ... </Card>
 
-          <div className="space-y-6">
-            <Card className="shadow-md border-0 gradient-card">
-              <CardHeader className="pb-3"><CardTitle className="text-lg flex items-center gap-2"><div className="p-1 bg-primary/10 rounded-md"><UserPlus className="w-4 h-4 text-primary" /></div>Cliente</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <Select value={formData.clienteId} onValueChange={(value) => setFormData({ ...formData, clienteId: value })}>
-                      <SelectTrigger className="h-11"><SelectValue placeholder="Selecione um cliente existente" /></SelectTrigger>
-                      <SelectContent>
-                        {clients.length > 0 ? (
-                          clients.map((client) => (
-                            <SelectItem key={client.id} value={client.id}>{client.nome} - {client.documento}</SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="no-clients" disabled>Nenhum cliente cadastrado</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button variant="outline" onClick={() => setIsClientWizardOpen(true)} className="whitespace-nowrap h-11 hover:bg-primary hover:text-primary-foreground transition-colors">
-                    <UserPlus className="w-4 h-4 mr-2" />Novo Cliente
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* O restante do formulário permanece o mesmo... */}
-            <Card className="shadow-md border-0 gradient-card"> 
-                <CardHeader className="pb-3"><CardTitle className="text-lg">Equipamento/Máquina</CardTitle></CardHeader>
-                <CardContent> ... </CardContent>
-            </Card>
-
-            <Card className="shadow-md border-0 gradient-card">
-                 <CardHeader className="pb-3"><CardTitle className="text-lg">Problema Relatado</CardTitle></CardHeader>
-                 <CardContent> ... </CardContent>
-            </Card>
-
-            <Card className="shadow-md border-0 gradient-card">
-                 <CardHeader className="pb-3"><CardTitle>Itens de Serviço</CardTitle></CardHeader>
-                 <CardContent> ... </CardContent>
-            </Card>
-
-             <Card className="shadow-md border-0 gradient-card">
-                 <CardHeader className="pb-3"><CardTitle>Configurações do Orçamento</CardTitle></CardHeader>
-                 <CardContent> ... </CardContent>
-            </Card>
-
-          </div>
-
-          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t">
-            <Button variant="outline" onClick={handleClose} className="order-3 sm:order-1 bg-transparent">Cancelar</Button>
-            <Button variant="outline" onClick={handleSaveAsDraft} className="order-2 bg-transparent"><Save className="w-4 h-4 mr-2" />Salvar como Rascunho</Button>
-            <Button onClick={handleGenerateOrder} className="gradient-primary order-1 sm:order-3"><FileText className="w-4 h-4 mr-2" />Gerar Orçamento / OS</Button>
-          </div>
+              {/* Problema */}
+              <Card> ... </Card>
+              
+              {/* Itens de Serviço */}
+              <Card>
+                <CardHeader> ... </CardHeader>
+                <CardContent>
+                   {state.itensServico.map((item) => (
+                      <div key={item.id} className="flex items-center gap-2 mb-2">
+                         <Input 
+                            placeholder="Descrição" 
+                            value={item.descricao} 
+                            onChange={e => dispatch({ type: 'UPDATE_SERVICE_ITEM', id: item.id, field: 'descricao', value: e.target.value })}
+                         />
+                         <Input 
+                            type="number" 
+                            placeholder="Qtd" 
+                            value={item.quantidade} 
+                            onChange={e => dispatch({ type: 'UPDATE_SERVICE_ITEM', id: item.id, field: 'quantidade', value: Number(e.target.value) })}
+                            className="w-20"
+                         />
+                         <Input 
+                            type="number" 
+                            placeholder="Preço" 
+                            value={item.preco} 
+                            onChange={e => dispatch({ type: 'UPDATE_SERVICE_ITEM', id: item.id, field: 'preco', value: Number(e.target.value) })}
+                            className="w-24"
+                        />
+                        <Button variant="ghost" size="icon" onClick={() => dispatch({ type: 'REMOVE_SERVICE_ITEM', id: item.id })} disabled={state.itensServico.length <= 1}>
+                            <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                   ))}
+                   <Button variant="outline" size="sm" onClick={() => dispatch({ type: 'ADD_SERVICE_ITEM' })} className="mt-2">
+                      <Plus className="h-4 w-4 mr-2" /> Adicionar Item
+                   </Button>
+                </CardContent>
+              </Card>
+           </div>
+           <div className="flex justify-end gap-3 pt-6 border-t">
+              <Button onClick={handleClose}>Cancelar</Button>
+              <Button onClick={handleSaveAsDraft} disabled={isSaving}>{isSaving ? <Loader2/> : <Save/>} Salvar Rascunho</Button>
+              <Button onClick={handleGenerateOrder} disabled={isSaving}><FileText/> Gerar Orçamento</Button>
+           </div>
         </DialogContent>
       </Dialog>
 
-      <ClientWizard isOpen={isClientWizardOpen} onClose={() => setIsClientWizardOpen(false)} onClientCreated={(newClientId) => { setFormData({ ...formData, clienteId: newClientId }); setIsClientWizardOpen(false); }} />
+      <ClientWizard 
+        isOpen={isClientWizardOpen} 
+        onClose={() => setIsClientWizardOpen(false)} 
+        onClientCreated={(newClient) => { 
+            dispatch({ type: 'SET_CLIENT', clientId: newClient.id });
+            setSelectedClient(newClient);
+            setIsClientWizardOpen(false); 
+        }} 
+      />
 
       <OrderPreviewModal
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}
-        orderData={formData}
-        clientData={clients.find((c) => c.id === formData.clienteId)}
+        orderData={state}
+        clientData={selectedClient}
+        onConfirm={() => handleApiSubmit('BUDGET')} 
       />
     </>
   )

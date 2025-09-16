@@ -1,7 +1,15 @@
 'use client'
 
-import { Home, Users, Package, ClipboardList, BarChart3, Settings, LifeBuoy, Menu, X } from "lucide-react"
+import { Home, Users, Package, ClipboardList, BarChart3, Settings, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { UserNav } from "@/components/user-nav" // Importando o novo componente
+
+// Supondo que você tenha um tipo User definido em algum lugar
+interface User {
+  name?: string | null
+  email?: string | null
+  image?: string | null
+}
 
 const NAV_ITEMS = [
   { view: "dashboard", label: "Dashboard", icon: Home },
@@ -9,7 +17,6 @@ const NAV_ITEMS = [
   { view: "products", label: "Produtos", icon: Package },
   { view: "orders", label: "Ordens de Serviço", icon: ClipboardList },
   { view: "reports", label: "Relatórios", icon: BarChart3 },
-  // A rota "company" foi removida, mantendo apenas "settings"
   { view: "settings", label: "Configurações", icon: Settings },
 ] as const;
 
@@ -19,6 +26,7 @@ interface SidebarNavigationProps {
   isMobile: boolean;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
+  user: User | null; // Adicionando a prop user
 }
 
 const NavLink = ({ 
@@ -38,7 +46,7 @@ const NavLink = ({
   </Button>
 );
 
-export const SidebarNavigation = ({ currentView, onViewChange, isMobile, isSidebarOpen, setIsSidebarOpen }: SidebarNavigationProps) => {
+export const SidebarNavigation = ({ currentView, onViewChange, isMobile, isSidebarOpen, setIsSidebarOpen, user }: SidebarNavigationProps) => {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
@@ -49,11 +57,9 @@ export const SidebarNavigation = ({ currentView, onViewChange, isMobile, isSideb
           <NavLink key={item.view} {...item} currentView={currentView} onViewChange={onViewChange} />
         ))}
       </nav>
-      <div className="p-4 mt-auto border-t">
-        <Button variant="outline" className="justify-start w-full">
-          <LifeBuoy className="w-4 h-4 mr-2" />
-          Ajuda & Suporte
-        </Button>
+      {/* Substituindo o botão de Ajuda pelo UserNav */}
+      <div className="p-2 mt-auto border-t">
+        <UserNav user={user} />
       </div>
     </div>
   );

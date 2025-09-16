@@ -1,171 +1,103 @@
-"use client"
+'use client'
 
 import type React from "react"
+import { useState, useRef, useCallback, useMemo } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { ClientSchema, ClientObjectSchema } from "@/lib/validators"
+import { toast } from "sonner"
 
-import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowRight, ArrowLeft, User, Building, Camera, Upload, CheckCircle, AlertCircle, FileText } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ArrowRight, ArrowLeft, User, Building, Camera, Upload, Loader2, X } from "lucide-react"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+
+const WizardFormSchema = ClientObjectSchema.extend({
+  criarOS: z.boolean().default(false),
+  descricaoProblema: z.string().optional(),
+  tipoMaquina: z.string().optional(),
+  marca: z.string().optional(),
+  modelo: z.string().optional(),
+})
+
+type WizardFormData = z.infer<typeof WizardFormSchema>
 
 interface ClientWizardProps {
   isOpen: boolean
   onClose: () => void
-  onSave?: (clientData: any) => void
-  onClientCreated?: (clientId: string) => void
+  onSave: (clientData: z.infer<typeof ClientSchema>) => void
 }
 
-export function ClientWizard({ isOpen, onClose, onSave, onClientCreated }: ClientWizardProps) {
+
+const STEP_VALIDATION_FIELDS: {
+  [key: number]: (keyof WizardFormData)[] | { [key: string]: (keyof WizardFormData)[] };
+} = {
+  1: {
+    PF: ['documento', 'nome', 'telefone'],
+    PJ: ['documento', 'nome', 'inscricaoEstadual', 'telefone'],
+  },
+  2: ['cep', 'rua', 'numero', 'bairro', 'cidade', 'estado'],
+  3: [],
+  4: [],
+};
+
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024
+
+const StepIndicator = ({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) => (
+  <div className="flex items-center gap-2 my-4">
+    {Array.from({ length: totalSteps }, (_, index) => {
+      const step = index + 1
+      const isActive = step === currentStep
+      const isCompleted = step < currentStep
+      
+      return (
+        <div key={step} className="flex items-center">
+          <div 
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              isCompleted 
+                ? 'bg-primary text-primary-foreground' 
+                : isActive 
+                ? 'bg-primary text-primary-foreground' 
+                : 'bg-muted text-muted-foreground'
+            }`}
+          >
+            {step}
+          </div>
+          {step < totalSteps && (
+            <div 
+              className={`w-12 h-0.5 mx-2 ${
+                isCompleted ? 'bg-primary' : 'bg-muted'
+              }`} 
+            />
+          )}
+        </div>
+      )
+    })}
+  </div>
+)
+
+export function ClientWizard({ isOpen, onClose, onSave }: ClientWizardProps) {
   const [currentStep, setCurrentStep] = useState(1)
-  const [isValidatingDocument, setIsValidatingDocument] = useState(false)
-  const [documentValidation, setDocumentValidation] = useState<{
-    isValid: boolean
-    message: string
-    verifiedName?: string
-  } | null>(null)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = useState({
-    // Etapa 1 - Dados Básicos
-    tipo: "PF" as "PF" | "PJ",
-    documento: "",
-    nome: "",
-    telefone: "",
-
-    // Etapa 2 - Endereço
-    cep: "",
-    rua: "",
-    numero: "",
-    complemento: "",
-    bairro: "",
-    cidade: "",
-    estado: "",
-
-    // Etapa 3 - Foto/Documento
-    consentimentoFoto: false,
-    observacoes: "",
-
-    // Etapa 4 - OS Opcional
-    criarOS: false,
-    descricaoProblema: "",
-    tipoMaquina: "",
-    marca: "",
-    modelo: "",
-    dataEntrada: new Date().toISOString().split("T")[0],
-    valorEstimado: "",
-  })
-
-  const validateDocument = async (documento: string, tipo: "PF" | "PJ") => {
-    setIsValidatingDocument(true)
-
-    // Simular validação de CPF/CNPJ
-    setTimeout(() => {
-      const isValid = documento.length >= 11
-
-      if (isValid && tipo === "PF") {
-        setDocumentValidation({
-          isValid: true,
-          message: "CPF válido",
-          verifiedName: "João Silva Santos", // Nome simulado da receita
-        })
-        setFormData((prev) => ({ ...prev, nome: "João Silva Santos" }))
-      } else if (isValid && tipo === "PJ") {
-        setDocumentValidation({
-          isValid: true,
-          message: "CNPJ válido",
-          verifiedName: "Tech Solutions Ltda", // Razão social simulada
-        })
-        setFormData((prev) => ({ ...prev, nome: "Tech Solutions Ltda" }))
-      } else {
-        setDocumentValidation({
-          isValid: false,
-          message: `${tipo === "PF" ? "CPF" : "CNPJ"} inválido ou não encontrado`,
-        })
-      }
-
-      setIsValidatingDocument(false)
-    }, 1500)
-  }
-
-  const handleDocumentChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, documento: value }))
-    setDocumentValidation(null)
-
-    // Auto-validar quando documento estiver completo
-    if ((formData.tipo === "PF" && value.length === 14) || (formData.tipo === "PJ" && value.length === 18)) {
-      validateDocument(value, formData.tipo)
-    }
-  }
-
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setPhotoFile(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPhotoPreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const handleCameraCapture = () => {
-    // Simular captura de câmera
-    alert("Funcionalidade de câmera será implementada com acesso à webcam")
-  }
-
-  const canProceedStep1 = () => {
-    return formData.documento && formData.nome && formData.telefone && documentValidation?.isValid
-  }
-
-  const canProceedStep2 = () => {
-    return formData.rua && formData.numero && formData.bairro && formData.cidade && formData.estado
-  }
-
-  const handleNextStep = () => {
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1)
-    }
-  }
-
-  const handlePrevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
-
-  const handleFinish = () => {
-    const clientData = {
-      ...formData,
-      id: `CLI${String(Date.now()).slice(-3)}`,
-      dataCadastro: new Date().toISOString().split("T")[0],
-      status: "Ativo",
-      foto: photoPreview,
-    }
-
-    if (onSave) {
-      onSave(clientData)
-    }
-
-    if (onClientCreated) {
-      onClientCreated(clientData.id)
-    }
-
-    onClose()
-
-    // Reset form
-    setCurrentStep(1)
-    setFormData({
+  const form = useForm<WizardFormData>({
+    resolver: zodResolver(WizardFormSchema),
+    defaultValues: {
       tipo: "PF",
       documento: "",
       nome: "",
+      inscricaoEstadual: "",
       telefone: "",
       cep: "",
       rua: "",
@@ -177,109 +109,189 @@ export function ClientWizard({ isOpen, onClose, onSave, onClientCreated }: Clien
       consentimentoFoto: false,
       observacoes: "",
       criarOS: false,
-      descricaoProblema: "",
-      tipoMaquina: "",
-      marca: "",
-      modelo: "",
-      dataEntrada: new Date().toISOString().split("T")[0],
-      valorEstimado: "",
-    })
-    setDocumentValidation(null)
+    },
+  })
+
+  const tipo = form.watch("tipo")
+  const criarOS = form.watch("criarOS")
+
+  const resetForm = useCallback(() => {
+    form.reset()
+    setCurrentStep(1)
     setPhotoFile(null)
     setPhotoPreview(null)
-  }
+    setIsSaving(false)
+  }, [form])
+
+  const handleClose = useCallback(() => {
+    resetForm()
+    onClose()
+  }, [resetForm, onClose])
+
+  const handlePhotoUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error("A foto deve ter no máximo 2MB.")
+      return
+    }
+
+    setPhotoFile(file)
+    const reader = new FileReader()
+    reader.onload = (e) => setPhotoPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+  }, [])
+
+  const removePhoto = useCallback(() => {
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }, [])
+
+  const handleNextStep = useCallback(async () => {
+    const stepValidationFields = STEP_VALIDATION_FIELDS[currentStep];
+    const fieldsToValidate = Array.isArray(stepValidationFields)
+      ? stepValidationFields
+      : stepValidationFields[tipo];
+
+    const isValid = await form.trigger(fieldsToValidate);
+    if (isValid && currentStep < 4) {
+      setCurrentStep(currentStep + 1)
+    }
+  }, [currentStep, tipo, form])
+
+  const handlePrevStep = useCallback(() => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1)
+    }
+  }, [currentStep])
+
+  const onSubmit = useCallback(async (data: WizardFormData) => {
+    setIsSaving(true)
+    
+    try {
+      const clientData = ClientSchema.parse(data)
+      onSave(clientData)
+      
+      toast.success("Cliente cadastrado com sucesso!", {
+        description: `${data.nome} foi adicionado à sua lista de clientes.`,
+      })
+      
+      handleClose()
+    } catch (error) {
+      console.error("Erro no processo de cadastro:", error)
+      toast.error("Ocorreu um erro inesperado.")
+    } finally {
+      setIsSaving(false)
+    }
+  }, [onSave, handleClose])
+
+  const stepTitle = useMemo(() => {
+    switch (currentStep) {
+      case 1: return "Dados Básicos"
+      case 2: return "Endereço"
+      case 3: return "Foto e Observações"
+      case 4: return "Ordem de Serviço"
+      default: return ""
+    }
+  }, [currentStep])
 
   const renderStep1 = () => (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold">Dados Básicos</h3>
-        <p className="text-sm text-muted-foreground">Informações principais do cliente</p>
-      </div>
-
-      {/* Toggle CPF/CNPJ */}
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant={formData.tipo === "PF" ? "default" : "outline"}
-          onClick={() => {
-            setFormData((prev) => ({ ...prev, tipo: "PF", documento: "", nome: "" }))
-            setDocumentValidation(null)
-          }}
-          className="flex-1"
-        >
-          <User className="w-4 h-4 mr-2" />
-          Pessoa Física (CPF)
-        </Button>
-        <Button
-          type="button"
-          variant={formData.tipo === "PJ" ? "default" : "outline"}
-          onClick={() => {
-            setFormData((prev) => ({ ...prev, tipo: "PJ", documento: "", nome: "" }))
-            setDocumentValidation(null)
-          }}
-          className="flex-1"
-        >
-          <Building className="w-4 h-4 mr-2" />
-          Pessoa Jurídica (CNPJ)
-        </Button>
-      </div>
-
-      {/* Campo Documento */}
-      <div className="space-y-2">
-        <Label htmlFor="documento">{formData.tipo === "PF" ? "CPF" : "CNPJ"}</Label>
-        <div className="relative">
-          <Input
-            id="documento"
-            value={formData.documento}
-            onChange={(e) => handleDocumentChange(e.target.value)}
-            placeholder={formData.tipo === "PF" ? "000.000.000-00" : "00.000.000/0000-00"}
-            className={documentValidation ? (documentValidation.isValid ? "border-green-500" : "border-red-500") : ""}
-          />
-          {isValidatingDocument && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+      <FormField
+        control={form.control}
+        name="tipo"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Tipo de Cliente</FormLabel>
+            <div className="flex gap-4">
+              <Button
+                type="button"
+                variant={field.value === "PF" ? "default" : "outline"}
+                onClick={() => field.onChange("PF")}
+                className="flex-1"
+              >
+                <User className="w-4 h-4 mr-2" />
+                Pessoa Física
+              </Button>
+              <Button
+                type="button"
+                variant={field.value === "PJ" ? "default" : "outline"}
+                onClick={() => field.onChange("PJ")}
+                className="flex-1"
+              >
+                <Building className="w-4 h-4 mr-2" />
+                Pessoa Jurídica
+              </Button>
             </div>
-          )}
-        </div>
-        {documentValidation && (
-          <div
-            className={`flex items-center gap-2 text-sm ${
-              documentValidation.isValid ? "text-green-600" : "text-red-600"
-            }`}
-          >
-            {documentValidation.isValid ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-            {documentValidation.message}
-          </div>
+            <FormMessage />
+          </FormItem>
         )}
-      </div>
+      />
 
-      {/* Campo Nome */}
-      <div className="space-y-2">
-        <Label htmlFor="nome">
-          {formData.tipo === "PF" ? "Nome Completo" : "Razão Social"}
-          {documentValidation?.verifiedName && (
-            <Badge variant="outline" className="ml-2 text-green-600">
-              Verificado
-            </Badge>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <FormField
+          control={form.control}
+          name="documento"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{tipo === "PF" ? "CPF" : "CNPJ"}</FormLabel>
+              <FormControl>
+                <Input 
+                  placeholder={tipo === "PF" ? "000.000.000-00" : "00.000.000/0000-00"} 
+                  {...field} 
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-        </Label>
-        <Input
-          id="nome"
-          value={formData.nome}
-          onChange={(e) => setFormData((prev) => ({ ...prev, nome: e.target.value }))}
-          placeholder={formData.tipo === "PF" ? "Nome completo" : "Razão social da empresa"}
-          readOnly={!!documentValidation?.verifiedName}
         />
-      </div>
 
-      {/* Campo Telefone */}
-      <div className="space-y-2">
-        <Label htmlFor="telefone">Telefone</Label>
-        <Input
-          id="telefone"
-          value={formData.telefone}
-          onChange={(e) => setFormData((prev) => ({ ...prev, telefone: e.target.value }))}
-          placeholder="(11) 99999-9999"
+        <FormField
+          control={form.control}
+          name="nome"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{tipo === "PF" ? "Nome Completo" : "Razão Social"}</FormLabel>
+              <FormControl>
+                <Input placeholder="Digite o nome" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {tipo === "PJ" && (
+          <FormField
+            control={form.control}
+            name="inscricaoEstadual"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Inscrição Estadual</FormLabel>
+                <FormControl>
+                  <Input placeholder="000.000.000.000" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        <FormField
+          control={form.control}
+          name="telefone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Telefone</FormLabel>
+              <FormControl>
+                <Input placeholder="(00) 00000-0000" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
       </div>
     </div>
@@ -287,333 +299,394 @@ export function ClientWizard({ isOpen, onClose, onSave, onClientCreated }: Clien
 
   const renderStep2 = () => (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold">Endereço</h3>
-        <p className="text-sm text-muted-foreground">Localização do cliente</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <FormField
+          control={form.control}
+          name="cep"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>CEP</FormLabel>
+              <FormControl>
+                <Input placeholder="00000-000" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="rua"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Rua</FormLabel>
+              <FormControl>
+                <Input placeholder="Nome da rua" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="cep">CEP</Label>
-          <Input
-            id="cep"
-            value={formData.cep}
-            onChange={(e) => setFormData((prev) => ({ ...prev, cep: e.target.value }))}
-            placeholder="00000-000"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rua">Rua *</Label>
-          <Input
-            id="rua"
-            value={formData.rua}
-            onChange={(e) => setFormData((prev) => ({ ...prev, rua: e.target.value }))}
-            placeholder="Nome da rua"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="numero">Número *</Label>
-          <Input
-            id="numero"
-            value={formData.numero}
-            onChange={(e) => setFormData((prev) => ({ ...prev, numero: e.target.value }))}
-            placeholder="123"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="complemento">Complemento</Label>
-          <Input
-            id="complemento"
-            value={formData.complemento}
-            onChange={(e) => setFormData((prev) => ({ ...prev, complemento: e.target.value }))}
-            placeholder="Apto, sala, etc."
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="bairro">Bairro *</Label>
-          <Input
-            id="bairro"
-            value={formData.bairro}
-            onChange={(e) => setFormData((prev) => ({ ...prev, bairro: e.target.value }))}
-            placeholder="Nome do bairro"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="cidade">Cidade *</Label>
-          <Input
-            id="cidade"
-            value={formData.cidade}
-            onChange={(e) => setFormData((prev) => ({ ...prev, cidade: e.target.value }))}
-            placeholder="Nome da cidade"
-          />
-        </div>
-        <div className="space-y-2 col-span-2">
-          <Label htmlFor="estado">Estado *</Label>
-          <Input
-            id="estado"
-            value={formData.estado}
-            onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.target.value }))}
-            placeholder="SP"
-          />
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <FormField
+          control={form.control}
+          name="numero"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Número</FormLabel>
+              <FormControl>
+                <Input placeholder="123" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="complemento"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Complemento</FormLabel>
+              <FormControl>
+                <Input placeholder="Apartamento, bloco, etc." {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <FormField
+          control={form.control}
+          name="bairro"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Bairro</FormLabel>
+              <FormControl>
+                <Input placeholder="Nome do bairro" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="cidade"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cidade</FormLabel>
+              <FormControl>
+                <Input placeholder="Nome da cidade" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="estado"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Estado</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="AC">Acre</SelectItem>
+                  <SelectItem value="AL">Alagoas</SelectItem>
+                  <SelectItem value="AP">Amapá</SelectItem>
+                  <SelectItem value="AM">Amazonas</SelectItem>
+                  <SelectItem value="BA">Bahia</SelectItem>
+                  <SelectItem value="CE">Ceará</SelectItem>
+                  <SelectItem value="DF">Distrito Federal</SelectItem>
+                  <SelectItem value="ES">Espírito Santo</SelectItem>
+                  <SelectItem value="GO">Goiás</SelectItem>
+                  <SelectItem value="MA">Maranhão</SelectItem>
+                  <SelectItem value="MT">Mato Grosso</SelectItem>
+                  <SelectItem value="MS">Mato Grosso do Sul</SelectItem>
+                  <SelectItem value="MG">Minas Gerais</SelectItem>
+                  <SelectItem value="PA">Pará</SelectItem>
+                  <SelectItem value="PB">Paraíba</SelectItem>
+                  <SelectItem value="PR">Paraná</SelectItem>
+                  <SelectItem value="PE">Pernambuco</SelectItem>
+                  <SelectItem value="PI">Piauí</SelectItem>
+                  <SelectItem value="RJ">Rio de Janeiro</SelectItem>
+                  <SelectItem value="RN">Rio Grande do Norte</SelectItem>
+                  <SelectItem value="RS">Rio Grande do Sul</SelectItem>
+                  <SelectItem value="RO">Rondônia</SelectItem>
+                  <SelectItem value="RR">Roraima</SelectItem>
+                  <SelectItem value="SC">Santa Catarina</SelectItem>
+                  <SelectItem value="SP">São Paulo</SelectItem>
+                  <SelectItem value="SE">Sergipe</SelectItem>
+                  <SelectItem value="TO">Tocantins</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </div>
     </div>
   )
 
   const renderStep3 = () => (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold">Foto / Documento</h3>
-        <p className="text-sm text-muted-foreground">Adicione uma foto do cliente ou documento</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
-        {/* Lado esquerdo - Observações */}
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="observacoes">Observações</Label>
-            <Textarea
-              id="observacoes"
-              value={formData.observacoes}
-              onChange={(e) => setFormData((prev) => ({ ...prev, observacoes: e.target.value }))}
-              placeholder="Informações adicionais sobre o cliente..."
-              rows={4}
-            />
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="consentimento"
-              checked={formData.consentimentoFoto}
-              onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, consentimentoFoto: checked as boolean }))}
-            />
-            <Label htmlFor="consentimento" className="text-sm">
-              Autorizo o uso da foto para cadastro e identificação
-            </Label>
-          </div>
-        </div>
-
-        {/* Lado direito - Upload de foto */}
-        <div className="space-y-4">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            {photoPreview ? (
-              <div className="space-y-2">
-                <img
-                  src={photoPreview || "/placeholder.svg"}
-                  alt="Preview"
-                  className="w-32 h-32 object-cover rounded-lg mx-auto"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setPhotoPreview(null)
-                    setPhotoFile(null)
-                  }}
-                >
-                  Remover Foto
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <Camera className="w-12 h-12 text-gray-400 mx-auto" />
-                <div className="space-y-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCameraCapture}
-                    className="w-full bg-transparent"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Tirar Foto
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload de Foto
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+      <div>
+        <Label htmlFor="photo">Foto do Cliente (Opcional)</Label>
+        <div className="mt-2">
+          {photoPreview ? (
+            <div className="relative w-32 h-32 mx-auto">
+              <img 
+                src={photoPreview} 
+                alt="Preview" 
+                className="w-full h-full object-cover rounded-lg border"
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute -top-2 -right-2 h-6 w-6"
+                onClick={removePhoto}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <div className="border-2 border-dashed border-muted-foreground rounded-lg p-8 text-center">
+              <Camera className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Selecionar Foto
+              </Button>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoUpload}
+            className="hidden"
+          />
         </div>
       </div>
+
+      <FormField
+        control={form.control}
+        name="consentimentoFoto"
+        render={({ field }) => (
+          <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+            <FormControl>
+              <Checkbox
+                checked={field.value}
+                onCheckedChange={field.onChange}
+              />
+            </FormControl>
+            <div className="space-y-1 leading-none">
+              <FormLabel>
+                Cliente concorda com o uso da foto
+              </FormLabel>
+            </div>
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="observacoes"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Observações</FormLabel>
+            <FormControl>
+              <Textarea 
+                placeholder="Informações adicionais sobre o cliente"
+                className="min-h-[100px]"
+                {...field} 
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
     </div>
   )
 
   const renderStep4 = () => (
     <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold">Abrir Ordem de Serviço</h3>
-        <p className="text-sm text-muted-foreground">Deseja já criar uma OS para este cliente?</p>
-      </div>
-
-      <div className="flex items-center justify-center gap-4">
-        <Button
-          type="button"
-          variant={formData.criarOS ? "outline" : "default"}
-          onClick={() => setFormData((prev) => ({ ...prev, criarOS: false }))}
-          className="flex-1"
-        >
-          Não, apenas cadastrar
-        </Button>
-        <Button
-          type="button"
-          variant={formData.criarOS ? "default" : "outline"}
-          onClick={() => setFormData((prev) => ({ ...prev, criarOS: true }))}
-          className="flex-1"
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          Sim, criar OS
-        </Button>
-      </div>
-
-      {formData.criarOS && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Dados da Ordem de Serviço</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="descricaoProblema">Descrição do Problema</Label>
-              <Textarea
-                id="descricaoProblema"
-                value={formData.descricaoProblema}
-                onChange={(e) => setFormData((prev) => ({ ...prev, descricaoProblema: e.target.value }))}
-                placeholder="Descreva o defeito ou problema relatado..."
-                rows={3}
+      <FormField
+        control={form.control}
+        name="criarOS"
+        render={({ field }) => (
+          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <FormLabel className="text-base">
+                Criar Ordem de Serviço
+              </FormLabel>
+              <div className="text-sm text-muted-foreground">
+                Criar uma OS automaticamente após cadastrar o cliente
+              </div>
+            </div>
+            <FormControl>
+              <Switch
+                checked={field.value}
+                onCheckedChange={field.onChange}
               />
-            </div>
+            </FormControl>
+          </FormItem>
+        )}
+      />
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="tipoMaquina">Tipo de Máquina</Label>
-                <Input
-                  id="tipoMaquina"
-                  value={formData.tipoMaquina}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, tipoMaquina: e.target.value }))}
-                  placeholder="Ex: Notebook, Desktop"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="marca">Marca</Label>
-                <Input
-                  id="marca"
-                  value={formData.marca}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, marca: e.target.value }))}
-                  placeholder="Ex: Dell, HP, Lenovo"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="modelo">Modelo</Label>
-                <Input
-                  id="modelo"
-                  value={formData.modelo}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, modelo: e.target.value }))}
-                  placeholder="Ex: Inspiron 15"
-                />
-              </div>
-            </div>
+      {criarOS && (
+        <div className="space-y-4 border rounded-lg p-4">
+          <h4 className="font-medium">Dados do Equipamento</h4>
+          
+          <FormField
+            control={form.control}
+            name="tipoMaquina"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tipo de Máquina</FormLabel>
+                <FormControl>
+                  <Input placeholder="Ex: Notebook, Desktop, Impressora" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="dataEntrada">Data de Entrada</Label>
-                <Input
-                  id="dataEntrada"
-                  type="date"
-                  value={formData.dataEntrada}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, dataEntrada: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="valorEstimado">Valor Estimado (R$)</Label>
-                <Input
-                  id="valorEstimado"
-                  value={formData.valorEstimado}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, valorEstimado: e.target.value }))}
-                  placeholder="0,00"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="marca"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Marca</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ex: Dell, HP, Lenovo" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="modelo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Modelo</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ex: Inspiron 15, EliteBook" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <FormField
+            control={form.control}
+            name="descricaoProblema"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Descrição do Problema</FormLabel>
+                <FormControl>
+                  <Textarea 
+                    placeholder="Descreva o problema relatado pelo cliente"
+                    className="min-h-[100px]"
+                    {...field} 
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
       )}
     </div>
   )
 
+  const renderCurrentStep = () => {
+    switch (currentStep) {
+      case 1: return renderStep1()
+      case 2: return renderStep2()
+      case 3: return renderStep3()
+      case 4: return renderStep4()
+      default: return renderStep1()
+    }
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
           <DialogDescription>
-            Passo {currentStep} de 4 -{" "}
-            {currentStep === 1
-              ? "Dados Básicos"
-              : currentStep === 2
-                ? "Endereço"
-                : currentStep === 3
-                  ? "Foto / Documento"
-                  : "Ordem de Serviço"}
+            Passo {currentStep} de 4 - {stepTitle}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Progress Bar */}
-        <div className="flex items-center gap-2 mb-6">
-          {[1, 2, 3, 4].map((step) => (
-            <div key={step} className="flex items-center flex-1">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step <= currentStep ? "bg-primary text-primary-foreground" : "bg-gray-200 text-gray-600"
-                }`}
-              >
-                {step}
-              </div>
-              {step < 4 && <div className={`flex-1 h-1 mx-2 ${step < currentStep ? "bg-primary" : "bg-gray-200"}`} />}
+        <StepIndicator currentStep={currentStep} totalSteps={4} />
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <div className="min-h-[400px]">
+              {renderCurrentStep()}
             </div>
-          ))}
-        </div>
 
-        {/* Step Content */}
-        <div className="min-h-[400px]">
-          {currentStep === 1 && renderStep1()}
-          {currentStep === 2 && renderStep2()}
-          {currentStep === 3 && renderStep3()}
-          {currentStep === 4 && renderStep4()}
-        </div>
-
-        {/* Navigation Buttons */}
-        <div className="flex justify-between pt-4 border-t">
-          <Button variant="outline" onClick={handlePrevStep} disabled={currentStep === 1}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Anterior
-          </Button>
-
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-
-            {currentStep < 4 ? (
-              <Button
-                onClick={handleNextStep}
-                disabled={(currentStep === 1 && !canProceedStep1()) || (currentStep === 2 && !canProceedStep2())}
+            <div className="flex justify-between pt-4 border-t">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handlePrevStep} 
+                disabled={currentStep === 1 || isSaving}
               >
-                Próximo
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Anterior
               </Button>
-            ) : (
-              <Button onClick={handleFinish}>{formData.criarOS ? "Criar Cliente + OS" : "Finalizar Cadastro"}</Button>
-            )}
-          </div>
-        </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={handleClose} 
+                  disabled={isSaving}
+                >
+                  Cancelar
+                </Button>
+                
+                {currentStep < 4 ? (
+                  <Button type="button" onClick={handleNextStep} disabled={isSaving}>
+                    Próximo
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                ) : (
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isSaving 
+                      ? 'Salvando...' 
+                      : criarOS 
+                      ? "Concluir e Criar OS" 
+                      : "Finalizar Cadastro"
+                    }
+                  </Button>
+                )}
+              </div>
+            </div>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
-import { FileText, Printer, AlertTriangle } from "lucide-react"
+import { FileText, Printer, AlertTriangle, Save, Loader2 } from "lucide-react"
 import { Label } from "@/components/ui/label"
 
 interface OrderPreviewModalProps {
@@ -14,36 +14,30 @@ interface OrderPreviewModalProps {
   onClose: () => void
   orderData: any
   clientData: any
+  onConfirm: () => Promise<void>; // Adicionado
 }
 
-export function OrderPreviewModal({ isOpen, onClose, orderData, clientData }: OrderPreviewModalProps) {
+export function OrderPreviewModal({ isOpen, onClose, orderData, clientData, onConfirm }: OrderPreviewModalProps) {
   const [termsAccepted, setTermsAccepted] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleGeneratePDF = async () => {
-    if (!termsAccepted) return
-
-    setIsGenerating(true)
-
-    // Simular geração de PDF
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    console.log("[v0] Gerando PDF da OS:", orderData)
-
-    // Aqui seria a lógica real de geração do PDF
-    // e redirecionamento para a tela da OS criada
-
-    setIsGenerating(false)
-    onClose()
-
-    // Simular redirecionamento para tela da OS
-    alert("OS criada com sucesso! Redirecionando para a tela da OS...")
+  const handleConfirmAndSave = async () => {
+    if (!termsAccepted) return;
+    setIsSaving(true);
+    try {
+      await onConfirm();
+      // O fechamento do modal e o reset serão tratados no componente pai
+    } catch (error) {
+      console.error("Erro ao confirmar e salvar a OS:", error);
+      // Idealmente, mostrar um toast de erro para o usuário
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const handleClientRefusal = () => {
-    // Marcar OS como recusada e gerar cobrança da taxa
-    console.log("[v0] Cliente recusou orçamento, gerando taxa de R$ 60,00")
-    alert("Orçamento recusado. Taxa de R$ 60,00 será cobrada conforme termo de responsabilidade.")
+    console.log("Cliente recusou orçamento.");
+    alert("Orçamento recusado.");
     onClose()
   }
 
@@ -55,14 +49,14 @@ export function OrderPreviewModal({ isOpen, onClose, orderData, clientData }: Or
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Preview do Orçamento / Ordem de Serviço
+            Pré-visualização da Ordem de Serviço
           </DialogTitle>
-          <DialogDescription>Revise as informações antes de gerar o documento final</DialogDescription>
+          <DialogDescription>Revise e confirme as informações antes de salvar.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Dados da Empresa */}
-          <Card>
+          {/* ... (Seções de dados da empresa, cliente, etc. - sem alterações) */}
+            <Card>
             <CardHeader className="text-center">
               <div className="mx-auto w-16 h-16 bg-primary/10 rounded-lg flex items-center justify-center mb-2">
                 <FileText className="w-8 h-8 text-primary" />
@@ -81,10 +75,10 @@ export function OrderPreviewModal({ isOpen, onClose, orderData, clientData }: Or
               </CardHeader>
               <CardContent className="space-y-2">
                 <p>
-                  <strong>Nome:</strong> {clientData.nome}
+                  <strong>Nome:</strong> {clientData.name}
                 </p>
                 <p>
-                  <strong>Documento:</strong> {clientData.documento}
+                  <strong>Documento:</strong> {clientData.document}
                 </p>
                 <p>
                   <strong>Data:</strong> {new Date(orderData.dataEntrada).toLocaleDateString("pt-BR")}
@@ -186,47 +180,35 @@ export function OrderPreviewModal({ isOpen, onClose, orderData, clientData }: Or
 
               <div className="flex items-center space-x-2 pt-3">
                 <Checkbox
-                  id="terms"
+                  id="terms-preview"
                   checked={termsAccepted}
                   onCheckedChange={(checked) => setTermsAccepted(checked as boolean)}
                 />
-                <Label htmlFor="terms" className="text-sm font-medium">
+                <Label htmlFor="terms-preview" className="text-sm font-medium">
                   Li e aceito o Termo de Responsabilidade acima
                 </Label>
               </div>
             </CardContent>
           </Card>
+
         </div>
 
-        {/* Botões de Ação */}
-        <div className="flex justify-between pt-4 border-t">
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              Voltar para Edição
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleClientRefusal}
-              className="text-red-600 hover:text-red-700 bg-transparent"
-            >
-              Cliente Recusou
-            </Button>
-          </div>
-
-          <Button onClick={handleGeneratePDF} disabled={!termsAccepted || isGenerating} className="bg-primary">
-            {isGenerating ? (
-              <>
-                <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Gerando PDF...
-              </>
-            ) : (
-              <>
-                <Printer className="w-4 h-4 mr-2" />
-                Gerar PDF / Imprimir
-              </>
-            )}
-          </Button>
+        <div className="flex flex-col sm:flex-row justify-between items-center pt-6 mt-6 border-t">
+            <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" onClick={onClose} disabled={isSaving}>Voltar</Button>
+                <Button variant="destructive" onClick={handleClientRefusal} disabled={isSaving}>Cliente Recusou</Button>
+            </div>
+            <div className="flex gap-2 mt-4 sm:mt-0 w-full sm:w-auto justify-end">
+                 <Button onClick={handleConfirmAndSave} disabled={!termsAccepted || isSaving} className="w-full sm:w-auto gradient-primary">
+                    {isSaving ? 
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : 
+                        <Save className="w-4 h-4 mr-2" />
+                    }
+                    Confirmar e Salvar
+                </Button>
+            </div>
         </div>
+
       </DialogContent>
     </Dialog>
   )

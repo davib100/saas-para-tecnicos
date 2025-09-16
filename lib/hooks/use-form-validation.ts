@@ -1,10 +1,11 @@
+
 "use client"
 
 import type React from "react"
 
 import { useState, useCallback } from "react"
 import { z } from "zod"
-import { formatValidationErrors } from "@/lib/validations"
+import { formatValidationErrors } from "@/lib/validators"
 
 interface UseFormValidationOptions<T> {
   schema: z.ZodSchema<T>
@@ -54,24 +55,29 @@ export function useFormValidation<T extends Record<string, any>>({
 
   const validateField = useCallback(
     (field: keyof T): boolean => {
-      try {
-        const fieldSchema = schema.shape?.[field as string]
-        if (fieldSchema) {
-          fieldSchema.parse(data[field])
-          setErrors((prev) => {
-            const newErrors = { ...prev }
-            delete newErrors[field as string]
-            return newErrors
-          })
-          return true
-        }
-        return true
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          const fieldErrors = formatValidationErrors(error)
-          setErrors((prev) => ({ ...prev, ...fieldErrors }))
-        }
-        return false
+      const result = schema.safeParse(data);
+      if (result.success) {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[field as string];
+          return newErrors;
+        });
+        return true;
+      }
+
+      const validationErrors = formatValidationErrors(result.error);
+      const fieldError = validationErrors[field as string];
+
+      if (fieldError) {
+        setErrors((prev) => ({ ...prev, [field as string]: fieldError }));
+        return false;
+      } else {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[field as string];
+          return newErrors;
+        });
+        return true;
       }
     },
     [data, schema],

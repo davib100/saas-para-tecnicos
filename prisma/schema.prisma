@@ -106,44 +106,38 @@ enum CompanyStatus {
 }
 
 model Client {
-  id          String     @id @default(cuid())
-  type        ClientType @default(INDIVIDUAL)
-  name        String     @db.VarChar(255)
-  email       String?    @db.VarChar(320)
-  phone       String?    @db.VarChar(20)
-  whatsapp    String?    @db.VarChar(20)
-  cpf         String?    @db.VarChar(14)
-  cnpj        String?    @db.VarChar(18)
-  rg          String?    @db.VarChar(20)
-  address     String?    @db.VarChar(500)
-  city        String?    @db.VarChar(100)
-  state       String?    @db.VarChar(2)
-  zipCode     String?    @db.VarChar(10)
-  photo       String?    @db.Text
-  notes       String?    @db.Text
-  tags        String[]   @default([])
-  isActive    Boolean    @default(true)
-  rating      Int?       @db.SmallInt
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id                String   @id @default(cuid())
+  tipo              String   @db.VarChar(2) // "PF" ou "PJ"
+  nome              String   @db.VarChar(255)
+  documento         String   @unique @db.VarChar(18) // Armazena CPF ou CNPJ
+  inscricaoEstadual String?  @db.VarChar(20)
+  telefone          String   @db.VarChar(20)
+  cep               String   @db.VarChar(9)
+  rua               String   @db.VarChar(255)
+  numero            String   @db.VarChar(20)
+  complemento       String?  @db.VarChar(100)
+  bairro            String   @db.VarChar(100)
+  cidade            String   @db.VarChar(100)
+  estado            String   @db.VarChar(2)
+  
+  // Campos mantidos do modelo original
+  photo             String?  @db.Text
+  notes             String?  @db.Text
+  tags              String[] @default([])
+  isActive          Boolean  @default(true)
+  rating            Int?     @db.SmallInt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  companyId   String
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orders      ServiceOrder[]
+  // Relações mantidas
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders            ServiceOrder[]
 
   @@index([companyId])
-  @@index([email])
-  @@index([cpf])
-  @@index([cnpj])
+  @@index([documento])
   @@index([isActive])
   @@map("clients")
-  @@schema("public")
-}
-
-enum ClientType {
-  INDIVIDUAL
-  BUSINESS
-
   @@schema("public")
 }
 

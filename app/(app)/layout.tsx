@@ -1,4 +1,3 @@
-
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { GeistSans } from "geist/font/sans"
@@ -8,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { RealtimeProvider } from "@/components/realtime-provider"
 import { EnhancedErrorBoundary } from "@/components/enhanced-error-boundary"
+import { AuthProvider } from "@/components/auth-provider" // Importando o AuthProvider
 
 export const metadata: Metadata = {
   title: {
@@ -42,23 +42,25 @@ export default function AppLayout({
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <EnhancedErrorBoundary componentName="AppLayout" maxRetries={1}>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-            <RealtimeProvider>
-              <main role="main" id="main-content">
-                {children}
-              </main>
-              <Toaster
-                position="top-right"
-                expand={false}
-                richColors
-                closeButton
-                toastOptions={{
-                  duration: 4000,
-                  className: "toast-custom",
-                }}
-              />
-            </RealtimeProvider>
-          </ThemeProvider>
+          <AuthProvider> { /* Adicionando o AuthProvider */ }
+            <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+              <RealtimeProvider>
+                <main role="main" id="main-content">
+                  {children}
+                </main>
+                <Toaster
+                  position="top-right"
+                  expand={false}
+                  richColors
+                  closeButton
+                  toastOptions={{
+                    duration: 4000,
+                    className: "toast-custom",
+                  }}
+                />
+              </RealtimeProvider>
+            </ThemeProvider>
+          </AuthProvider>
         </EnhancedErrorBoundary>
       </body>
     </html>
