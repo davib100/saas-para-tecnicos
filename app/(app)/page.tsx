@@ -1,141 +1,655 @@
 'use client'
 
-import { useState, useCallback, useEffect, memo } from "react"
+import { useState, useMemo, useCallback, useEffect, memo } from "react"
 import dynamic from "next/dynamic"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { 
   ClipboardList, 
   DollarSign, 
   TrendingUp, 
   BarChart3, 
-  Plus,  Eye, 
+  Plus, 
+  Eye, 
   Activity, 
   AlertTriangle, 
   Menu, 
   Settings,
   Home, 
-  Loader2 
+  Users,
+  Package,
+  ArrowRight,
+  TrendingDown,
+  Clock,
+  CheckCircle,
+  Calendar,
+  Sparkles
 } from "lucide-react"
 import { SidebarNavigation } from "@/components/sidebar-navigation"
 import { CompanySetupModal } from "@/components/company-setup-modal"
+import { cn } from "@/lib/utils"
 
-// Componentes de Esqueleto e Módulos Dinâmicos
-const PageSkeleton = () => ( <div className="space-y-6 p-4 md:p-6 lg:p-8"><div className="flex items-center justify-between"><div className="space-y-2"><Skeleton className="h-8 w-64" /><Skeleton className="h-4 w-80" /></div><Skeleton className="h-10 w-24" /></div><Card><CardContent className="pt-6"><Skeleton className="h-10 w-full" /></CardContent></Card><Card><CardContent className="pt-6 space-y-4">{[...Array(5)].map((_, i) => (<div key={i} className="flex items-center justify-between p-4 border rounded-lg"><div className="flex-1 space-y-2"><Skeleton className="h-5 w-1/4" /><Skeleton className="h-4 w-1/2" /></div><div className="flex items-center gap-4"><Skeleton className="h-6 w-24" /><Skeleton className="h-8 w-8" /></div></div>))}</CardContent></Card></div> );
-const ClientManagement = dynamic(() => import("@/components/client-management"), { loading: () => <PageSkeleton /> })
-const ProductManagement = dynamic(() => import("@/components/product-management"), { loading: () => <PageSkeleton /> })
-const OrderManagement = dynamic(() => import("@/components/order-management"), { loading: () => <PageSkeleton /> })
-const FinancialModule = dynamic(() => import("@/components/financial-module"), { loading: () => <PageSkeleton /> })
-const ReportsModule = dynamic(() => import("@/components/reports-module"), { loading: () => <PageSkeleton /> })
-const SettingsModule = dynamic(() => import("@/components/settings-module"), { loading: () => <PageSkeleton /> })
+// Dynamic imports for better performance
+const ClientManagement = dynamic(() => import("@/components/client-management"), {
+  loading: () => <LoadingSpinner size="lg" text="Carregando Clientes..." />
+})
+const ProductManagement = dynamic(() => import("@/components/product-management"), {
+  loading: () => <LoadingSpinner size="lg" text="Carregando Produtos..." />
+})
+const OrderManagement = dynamic(() => import("@/components/order-management"), {
+  loading: () => <LoadingSpinner size="lg" text="Carregando Ordens..." />
+})
+const ReportsModule = dynamic(() => import("@/components/reports-module"), {
+  loading: () => <LoadingSpinner size="lg" text="Carregando Relatórios..." />
+})
+const SettingsModule = dynamic(() => import("@/components/settings-module"), {
+  loading: () => <LoadingSpinner size="lg" text="Carregando Configurações..." />
+})
 
-// Interfaces, Constantes e Funções Puras
-interface Order { id: string; client: { nome: string; } | null; equipment: string; status: string; }
-interface DashboardStats { osAndamento: number; osConcluidas: number; orcamentosPendentes: number; receitaMensal: number; }
-interface CompanyInfo { id: string; [key: string]: any; }
+// Interfaces
+interface Order { 
+  id: string;
+  client: { nome: string; };
+  equipment: string;
+  status: string;
+  createdAt: string;
+  priority?: 'baixa' | 'media' | 'alta';
+}
 
-const STATUS_BADGE_CLASSES: Record<string, string> = { "Concluído": "bg-green-100 text-green-800", "Em Execução": "bg-purple-100 text-purple-800", "Aguardando Aprovação": "bg-yellow-100 text-yellow-800", "Cancelado": "bg-red-100 text-red-800", "Rascunho": "bg-gray-200 text-gray-800", "Orçamento Gerado": "bg-blue-100 text-blue-800" };
-const DASHBOARD_CARDS = [ { key: 'osAndamento' as keyof DashboardStats, label: 'OS em Andamento', icon: Activity }, { key: 'osConcluidas' as keyof DashboardStats, label: 'OS Concluídas no Mês', icon: ClipboardList }, { key: 'orcamentosPendentes' as keyof DashboardStats, label: 'Orçamentos Pendentes', icon: DollarSign }, { key: 'receitaMensal' as keyof DashboardStats, label: 'Receita do Mês', icon: TrendingUp, format: 'currency' as const } ];
-const SHORTCUTS = [ { view: "dashboard", label: "Dashboard", icon: Home }, { view: "orders", label: "Ordens de Serviço", icon: ClipboardList }, { view: "financial", label: "Financeiro", icon: DollarSign }, { view: 'reports', label: 'Relatórios', icon: BarChart3 }, { view: 'settings', label: 'Configurações', icon: Settings } ];
+interface DashboardStats { 
+  osAndamento: number; 
+  osConcluidas: number; 
+  orcamentosPendentes: number; 
+  receitaMensal: number;
+  osHoje?: number;
+  clientesAtivos?: number;
+  produtosEstoque?: number;
+  ticketMedio?: number;
+}
 
-const getStatusBadgeClass = (status: string): string => STATUS_BADGE_CLASSES[status] || "bg-gray-100 text-gray-800";
-const formatCurrency = (value: number | string): string => { const numericValue = typeof value === 'string' ? parseFloat(value) : value; if (isNaN(numericValue)) { return "R$ 0,00"; } return `R$ ${numericValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
+interface CompanyInfo { 
+  id: string; 
+  [key: string]: any; 
+}
 
-// Componentes Memoizados
-const EmptyRecentOrders = memo(() => ( <div className="text-center text-muted-foreground p-10 border-2 border-dashed rounded-lg mt-4"><AlertTriangle className="mx-auto h-12 w-12" /><h3 className="mt-4 text-lg font-semibold">Nenhuma OS Recente</h3><p className="mt-2 text-sm">Novas ordens de serviço aparecerão aqui.</p></div> ));
-const StatCard = memo(({ stat, value }: { stat: typeof DASHBOARD_CARDS[number], value?: number | string }) => { const Icon = stat.icon; return ( <Card><CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle className="text-sm font-medium">{stat.label}</CardTitle><Icon className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent>{value !== undefined ? (<div className="text-2xl font-bold">{stat.format === 'currency' ? formatCurrency(value) : value.toString()}</div>) : (<Skeleton className="h-8 w-24 mt-1" />)}</CardContent></Card> ); });
-const OrderItem = memo(({ order, onNavigate }: { order: Order, onNavigate: (view: string) => void }) => ( <div className="flex items-center justify-between py-2 border-b last:border-0"><div className="flex-1 min-w-0"><p className="font-semibold truncate">{order.equipment}</p><p className="text-sm text-muted-foreground truncate">{order.client?.nome || 'Cliente não associado'}</p></div><div className="flex items-center gap-4 ml-4 flex-shrink-0"><Badge variant="outline" className={getStatusBadgeClass(order.status)}>{order.status}</Badge><Button variant="ghost" size="icon" onClick={() => onNavigate("orders")}><Eye className="w-4 h-4" /></Button></div></div> ));
-const DashboardView = memo(({ stats, orders, onNavigate, isLoading }: { stats: DashboardStats | null, orders: Order[], onNavigate: (view: string) => void, isLoading: boolean }) => ( <div className="space-y-8 p-4 md:p-6 lg:p-8"><header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><h1 className="text-3xl font-bold text-foreground">Dashboard</h1><p className="text-muted-foreground">Visão geral do seu negócio</p></div><Button onClick={() => onNavigate("orders")}><Plus className="w-4 h-4 mr-2" />Nova OS</Button></header><section className="grid grid-cols-2 md:grid-cols-4 gap-6">{DASHBOARD_CARDS.map((stat) => <StatCard key={stat.key} stat={stat} value={stats?.[stat.key]} />)}</section><div className="grid md:grid-cols-3 gap-6"><Card className="md:col-span-2"><CardHeader><CardTitle>Ordens de Serviço Recentes</CardTitle></CardHeader><CardContent>{isLoading ? (<div className="text-center p-10"><Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" /></div>) : orders.length > 0 ? (<div className="space-y-2">{orders.map(order => <OrderItem key={order.id} order={order} onNavigate={onNavigate} />)}</div>) : <EmptyRecentOrders />}</CardContent></Card><Card><CardHeader><CardTitle>Atalhos Rápidos</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-4">{SHORTCUTS.map(({ view, label, icon: Icon }) => ( <Button key={view} variant="outline" className="h-20 flex flex-col gap-2" onClick={() => onNavigate(view)}><Icon className="w-5 h-5" /><span className="text-xs">{label}</span></Button> ))}</CardContent></Card></div></div> ));
+// Enhanced Status Configuration
+const STATUS_CONFIG = {
+  "Concluído": { 
+    color: "success", 
+    icon: CheckCircle,
+    gradient: "from-green-500 to-emerald-600"
+  },
+  "Em Execução": { 
+    color: "info", 
+    icon: Activity,
+    gradient: "from-blue-500 to-indigo-600"
+  },
+  "Aguardando Aprovação": { 
+    color: "warning", 
+    icon: Clock,
+    gradient: "from-yellow-500 to-orange-600"
+  },
+  "Cancelado": { 
+    color: "destructive", 
+    icon: AlertTriangle,
+    gradient: "from-red-500 to-rose-600"
+  },
+  "Rascunho": { 
+    color: "secondary", 
+    icon: Activity,
+    gradient: "from-gray-500 to-slate-600"
+  },
+  "Orçamento Gerado": { 
+    color: "info", 
+    icon: DollarSign,
+    gradient: "from-purple-500 to-violet-600"
+  },
+} as const;
+
+// Enhanced Dashboard Cards Configuration
+const DASHBOARD_CARDS = [
+  { 
+    key: 'osAndamento' as keyof DashboardStats, 
+    label: 'OS em Andamento', 
+    icon: Activity, 
+    gradient: 'from-blue-500 to-indigo-600',
+    description: 'Ordens sendo executadas'
+  },
+  { 
+    key: 'osConcluidas' as keyof DashboardStats, 
+    label: 'OS Concluídas', 
+    icon: CheckCircle, 
+    gradient: 'from-green-500 to-emerald-600',
+    description: 'Concluídas neste mês'
+  },
+  { 
+    key: 'orcamentosPendentes' as keyof DashboardStats, 
+    label: 'Orçamentos Pendentes', 
+    icon: DollarSign, 
+    gradient: 'from-yellow-500 to-orange-600',
+    description: 'Aguardando aprovação'
+  },
+  { 
+    key: 'receitaMensal' as keyof DashboardStats, 
+    label: 'Receita do Mês', 
+    icon: TrendingUp, 
+    format: 'currency' as const,
+    gradient: 'from-purple-500 to-violet-600',
+    description: 'Faturamento atual'
+  }
+];
+
+// Quick Actions Configuration
+const QUICK_ACTIONS = [
+  { 
+    view: "orders", 
+    label: "Nova OS", 
+    icon: ClipboardList, 
+    description: "Criar ordem de serviço",
+    gradient: "from-blue-500 to-indigo-600"
+  },
+  { 
+    view: "clients", 
+    label: "Novo Cliente", 
+    icon: Users, 
+    description: "Cadastrar cliente",
+    gradient: "from-green-500 to-emerald-600"
+  },
+  { 
+    view: "products", 
+    label: "Produto", 
+    icon: Package, 
+    description: "Gerenciar estoque",
+    gradient: "from-purple-500 to-violet-600"
+  },
+  { 
+    view: 'reports', 
+    label: 'Relatórios', 
+    icon: BarChart3, 
+    description: "Ver análises",
+    gradient: "from-orange-500 to-red-600"
+  }
+];
+
+// Utility Functions
+const formatCurrency = (value: number): string => 
+  `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const formatDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
+// Components
+const EmptyRecentOrders = memo(() => (
+  <div className="text-center py-16 animate-fade-in">
+    <div className="size-16 mx-auto mb-6 rounded-2xl gradient-primary/10 flex items-center justify-center">
+      <AlertTriangle className="size-8 text-primary" />
+    </div>
+    <h3 className="text-lg font-semibold mb-2">Nenhuma OS Recente</h3>
+    <p className="text-sm text-muted-foreground mb-4">
+      Novas ordens de serviço aparecerão aqui.
+    </p>
+    <Button variant="outline" size="sm">
+      <Plus className="size-4 mr-2" />
+      Criar primeira OS
+    </Button>
+  </div>
+));
+
+const StatCard = memo(({ 
+  stat, 
+  value, 
+  index 
+}: { 
+  stat: typeof DASHBOARD_CARDS[number]; 
+  value: number;
+  index: number;
+}) => {
+  const Icon = stat.icon;
+  const displayValue = stat.format === 'currency' ? formatCurrency(value) : value.toLocaleString();
+  
+  return (
+    <Card 
+      variant="glass" 
+      hover 
+      className={cn(
+        "relative overflow-hidden entrance-scale",
+        "before:absolute before:inset-0 before:bg-gradient-to-br before:opacity-5",
+        `before:${stat.gradient}`
+      )}
+      style={{ '--stagger-delay': index } as React.CSSProperties}
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className={cn(
+            "size-12 rounded-xl flex items-center justify-center shadow-modern",
+            `bg-gradient-to-br ${stat.gradient} text-white`
+          )}>
+            <Icon className="size-6" />
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-gradient">
+              {displayValue}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div>
+          <h3 className="font-semibold text-sm mb-1">{stat.label}</h3>
+          <p className="text-xs text-muted-foreground">{stat.description}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
+const OrderItem = memo(({ 
+  order, 
+  onNavigate,
+  index
+}: { 
+  order: Order; 
+  onNavigate: (view: string) => void;
+  index: number;
+}) => {
+  const statusConfig = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG];
+  const StatusIcon = statusConfig?.icon || Activity;
+  
+  return (
+    <div 
+      className={cn(
+        "group flex items-center gap-4 p-4 rounded-xl border bg-card/50 transition-all-smooth",
+        "hover:bg-card hover:shadow-modern hover-lift-gentle entrance-slide-up"
+      )}
+      style={{ '--stagger-delay': index } as React.CSSProperties}
+    >
+      <div className={cn(
+        "size-10 rounded-lg flex items-center justify-center",
+        `bg-gradient-to-br ${statusConfig?.gradient || 'from-gray-500 to-slate-600'} text-white shadow-modern`
+      )}>
+        <StatusIcon className="size-5" />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <h4 className="font-semibold text-sm truncate group-hover:text-primary transition-colors-smooth">
+          {order.equipment}
+        </h4>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-xs text-muted-foreground truncate">
+            {order.client.nome}
+          </p>
+          <span className="text-xs text-muted-foreground">•</span>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(order.createdAt)}
+          </p>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-3">
+        <Badge 
+          variant={statusConfig?.color as any || 'secondary'} 
+          size="sm"
+          className="shadow-modern"
+        >
+          {order.status}
+        </Badge>
+        <Button 
+          variant="ghost" 
+          size="icon-sm" 
+          onClick={() => onNavigate("orders")}
+          className="opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <Eye className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+});
+
+const QuickActionCard = memo(({ 
+  action, 
+  onNavigate,
+  index 
+}: { 
+  action: typeof QUICK_ACTIONS[number]; 
+  onNavigate: (view: string) => void;
+  index: number;
+}) => {
+  const Icon = action.icon;
+  
+  return (
+    <Card
+      variant="glass"
+      hover
+      className={cn(
+        "relative overflow-hidden cursor-pointer entrance-scale",
+        "before:absolute before:inset-0 before:bg-gradient-to-br before:opacity-5",
+        `before:${action.gradient}`
+      )}
+      style={{ '--stagger-delay': index } as React.CSSProperties}
+      onClick={() => onNavigate(action.view)}
+    >
+      <CardContent className="p-6 text-center">
+        <div className={cn(
+          "size-14 mx-auto mb-4 rounded-2xl flex items-center justify-center shadow-modern",
+          `bg-gradient-to-br ${action.gradient} text-white`
+        )}>
+          <Icon className="size-7" />
+        </div>
+        <h3 className="font-semibold text-sm mb-1">{action.label}</h3>
+        <p className="text-xs text-muted-foreground">{action.description}</p>
+      </CardContent>
+    </Card>
+  );
+});
+
+const DashboardView = memo(({ 
+  stats, 
+  orders, 
+  onNavigate 
+}: { 
+  stats: DashboardStats; 
+  orders: Order[]; 
+  onNavigate: (view: string) => void;
+}) => (
+  <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="space-y-8 p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* Header */}
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="size-12 rounded-2xl gradient-primary flex items-center justify-center shadow-modern">
+              <Sparkles className="size-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold text-gradient">Dashboard</h1>
+              <p className="text-muted-foreground">Visão geral do seu negócio</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="lg">
+            <Calendar className="size-4 mr-2" />
+            Hoje
+          </Button>
+          <Button size="lg" onClick={() => onNavigate("orders")} className="shadow-modern">
+            <Plus className="size-4 mr-2" />
+            Nova OS
+          </Button>
+        </div>
+      </header>
+
+      {/* Stats Grid */}
+      <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 stagger-children">
+        {DASHBOARD_CARDS.map((stat, index) => (
+          <StatCard 
+            key={stat.key} 
+            stat={stat} 
+            value={stats[stat.key] ?? 0} 
+            index={index}
+          />
+        ))}
+      </section>
+
+      {/* Main Content Grid */}
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* Recent Orders */}
+        <Card variant="glass" className="lg:col-span-2 entrance-slide-up">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-3">
+                  <ClipboardList className="size-5 text-primary" />
+                  Ordens de Serviço Recentes
+                </CardTitle>
+                <CardDescription>
+                  Últimas {orders.length} ordens registradas no sistema
+                </CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => onNavigate("orders")}
+              >
+                Ver todas
+                <ArrowRight className="size-4 ml-2" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {orders.length > 0 ? (
+              <div className="space-y-3 stagger-children">
+                {orders.map((order, index) => (
+                  <OrderItem 
+                    key={order.id} 
+                    order={order} 
+                    onNavigate={onNavigate}
+                    index={index}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyRecentOrders />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card variant="glass" className="entrance-slide-up animate-delay-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              <Sparkles className="size-5 text-primary" />
+              Ações Rápidas
+            </CardTitle>
+            <CardDescription>
+              Acesso rápido às funcionalidades principais
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 stagger-children">
+              {QUICK_ACTIONS.map((action, index) => (
+                <QuickActionCard
+                  key={action.view}
+                  action={action}
+                  onNavigate={onNavigate}
+                  index={index}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  </div>
+));
+
+const LoadingState = memo(() => (
+  <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-background via-background to-muted/20">
+    <LoadingSpinner size="lg" variant="gradient" text="Carregando dashboard..." />
+  </div>
+));
 
 export default function HomePage() {
-  const { data: session } = useSession();
-  const userId = session?.user?.id;
-
+  const { data: session, status: sessionStatus } = useSession();
   const [currentView, setCurrentView] = useState("dashboard");
   const [isMobile, setIsMobile] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
-  const [isCompanyInfoLoading, setIsCompanyInfoLoading] = useState(true);
-
-  const [isLoadingData, setIsLoadingData] = useState(false); // Inicia como false
+  const [isLoading, setIsLoading] = useState(true);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
 
+  // Callbacks
   const handleSaveCompanyInfo = useCallback((data: Omit<CompanyInfo, 'id'>) => {
      const dataWithId: CompanyInfo = { ...data, id: companyInfo?.id || crypto.randomUUID() };
      try {
        localStorage.setItem('companyInfo', JSON.stringify(dataWithId));
        setCompanyInfo(dataWithId);
-     } catch (error) { console.error("Falha ao salvar dados:", error); }
+     } catch (error) { 
+       console.error("Falha ao salvar dados:", error); 
+     }
   }, [companyInfo?.id]);
 
-  const handleViewChange = useCallback((view: string) => { if (view !== currentView) { setCurrentView(view); if (isMobile) setIsSidebarOpen(false); } }, [currentView, isMobile]);
+  const handleViewChange = useCallback((view: string) => {
+    setCurrentView(view);
+    if (isMobile) setIsSidebarOpen(false);
+  }, [isMobile]);
 
-  useEffect(() => { try { const savedData = localStorage.getItem('companyInfo'); if (savedData) { setCompanyInfo(JSON.parse(savedData)); } } catch (error) { console.error("Falha ao carregar dados da empresa:", error); } finally { setIsCompanyInfoLoading(false); } }, []);
-
-  // *** CORREÇÃO DEFINITIVA DO LOOP ***
+  // Effects
   useEffect(() => {
-    // A função só será executada se a view for 'dashboard' e o usuário existir
-    if (currentView === 'dashboard' && userId) {
-      const loadDashboardData = async () => {
-        setIsLoadingData(true);
-        try {
-          const [statsRes, ordersRes] = await Promise.all([
-            fetch('/api/dashboard/stats'),
-            fetch('/api/orders?limit=5&page=1')
-          ]);
-
-          if (statsRes.ok) {
-            setDashboardStats(await statsRes.json());
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      try {
+        const savedData = localStorage.getItem('companyInfo');
+        if (savedData) setCompanyInfo(JSON.parse(savedData));
+        
+        // Simulate API calls with better mock data
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const mockStats: DashboardStats = {
+          osAndamento: 12,
+          osConcluidas: 45,
+          orcamentosPendentes: 8,
+          receitaMensal: 35420.50,
+          osHoje: 3,
+          clientesAtivos: 156,
+          produtosEstoque: 234,
+          ticketMedio: 1245.30
+        };
+        
+        const mockOrders: Order[] = [
+          {
+            id: "OS001",
+            client: { nome: "João Silva" },
+            equipment: "Notebook Dell Inspiron",
+            status: "Em Execução",
+            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            priority: "alta"
+          },
+          {
+            id: "OS002", 
+            client: { nome: "Maria Santos" },
+            equipment: "Impressora HP LaserJet",
+            status: "Aguardando Aprovação",
+            createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+            priority: "media"
+          },
+          {
+            id: "OS003",
+            client: { nome: "Pedro Costa" },
+            equipment: "Desktop Gamer",
+            status: "Concluído",
+            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            priority: "baixa"
           }
-          if (ordersRes.ok) {
-            const ordersData = await ordersRes.json();
-            const validatedOrders = ordersData.data?.filter((o: any) => o.client) || [];
-            setRecentOrders(validatedOrders);
-          }
-        } catch (error) {
-          console.error("Falha ao carregar dados do dashboard:", error);
-          toast.error("Não foi possível carregar os dados do painel.");
-        } finally {
-          setIsLoadingData(false);
-        }
-      };
+        ];
+        
+        setDashboardStats(mockStats);
+        setRecentOrders(mockOrders);
 
-      loadDashboardData();
+      } catch (error) {
+        console.error("Falha ao carregar dados do dashboard:", error);
+        toast.error("Não foi possível carregar os dados do painel.")
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (sessionStatus === 'authenticated') {
+      loadInitialData();
     }
-    // A dependência explícita em `currentView` e `userId` garante que a busca
-    // ocorra apenas quando um deles muda, quebrando o ciclo de renderização.
-  }, [currentView, userId]);
+  }, [sessionStatus]);
 
-  useEffect(() => { const checkScreenSize = () => { const mobile = window.innerWidth < 768; setIsMobile(mobile); if (!mobile) setIsSidebarOpen(false); }; checkScreenSize(); window.addEventListener("resize", checkScreenSize); return () => window.removeEventListener("resize", checkScreenSize); }, []);
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (!mobile) setIsSidebarOpen(false);
+    };
+    checkScreenSize();
+    window.addEventListener("resize", checkScreenSize);
+    return () => window.removeEventListener("resize", checkScreenSize);
+  }, []);
 
-  const renderCurrentView = () => {
-    if (isCompanyInfoLoading) return <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  // Render current view
+  const renderCurrentView = useMemo(() => {
+    if (isLoading) return <LoadingState />;
 
     switch (currentView) {
-      case 'dashboard': return <DashboardView stats={dashboardStats} orders={recentOrders} onNavigate={handleViewChange} isLoading={isLoadingData} />;
+      case 'dashboard':
+        return dashboardStats ? (
+          <DashboardView 
+            stats={dashboardStats} 
+            orders={recentOrders} 
+            onNavigate={handleViewChange} 
+          />
+        ) : <LoadingState />;
       case 'clients': return <ClientManagement />;
       case 'products': return <ProductManagement />;
       case 'orders': return <OrderManagement />;
-      case 'financial': return <FinancialModule />;
       case 'reports': return <ReportsModule />;
       case 'settings': return <SettingsModule companyData={companyInfo} onSave={handleSaveCompanyInfo} />;
-      default: return <PageSkeleton />;
+      default: return <LoadingState />;
     }
-  };
+  }, [currentView, companyInfo, handleViewChange, dashboardStats, recentOrders, handleSaveCompanyInfo, isLoading]);
+
+  // Loading state
+  if (sessionStatus === 'loading') {
+    return <LoadingState />;
+  }
+
+  // Company setup
+  if (!companyInfo) {
+    return <CompanySetupModal isOpen={true} onSave={handleSaveCompanyInfo} />;
+  }
 
   return (
-    <div className="flex h-screen bg-background">
-      {!isCompanyInfoLoading && !companyInfo && (<CompanySetupModal isOpen={true} onSave={handleSaveCompanyInfo} />)}
-      <SidebarNavigation currentView={currentView} onViewChange={handleViewChange} isMobile={isMobile} isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} user={session?.user || null} />
+    <div className="flex h-screen bg-background overflow-hidden">
+      <SidebarNavigation 
+        currentView={currentView} 
+        onViewChange={handleViewChange} 
+        isMobile={isMobile}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen} 
+        user={session?.user || null}
+      />
+      
       <div className="flex flex-col flex-1 w-full overflow-hidden">
-        {isMobile && (<header className="flex items-center justify-between p-4 border-b bg-card"><h1 className="text-lg font-semibold">TechOS</h1><Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)}><Menu className="w-5 h-5" /></Button></header>)}
-        <main className="flex-1 overflow-y-auto bg-muted/40">{renderCurrentView()}</main>
+        {isMobile && (
+          <header className="flex items-center justify-between p-4 border-b bg-card/50 glass-effect">
+            <h1 className="text-lg font-semibold text-gradient">TechOS</h1>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <Menu className="size-5" />
+            </Button>
+          </header>
+        )}
+        
+        <main className="flex-1 overflow-y-auto">
+          {renderCurrentView}
+        </main>
       </div>
     </div>
   );
 }
+
+// Display Names
+EmptyRecentOrders.displayName = 'EmptyRecentOrders'
+StatCard.displayName = 'StatCard'
+OrderItem.displayName = 'OrderItem'
+QuickActionCard.displayName = 'QuickActionCard'
+DashboardView.displayName = 'DashboardView'
+LoadingState.displayName = 'LoadingState'

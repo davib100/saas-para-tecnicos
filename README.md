@@ -202,3 +202,9 @@ Para suporte, abra uma issue no GitHub ou entre em contato através do email.
 ---
 
 Desenvolvido com ❤️ usando Next.js e TypeScript
+
+./lib/backup.ts: This script imports the xlsx library to handle Excel file creation and writing for backup purposes.
+
+./app/api/export/daily/route.ts: This API route uses xlsx to export daily movement data to an Excel file.
+./app/api/export/complete/route.ts: This API route uses xlsx to export a complete backup to an Excel file.
+./app/api/export/period/route.ts:

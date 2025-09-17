@@ -1,77 +1,175 @@
 'use client'
 
+import { useState } from "react"
 import { signOut } from "next-auth/react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { User, Settings, LogOut, Moon, Sun, Monitor } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { LogOut, User as UserIcon, HelpCircle } from "lucide-react"
-
-// Supondo que você tenha um hook para obter o usuário atual.
-// Se não, você precisará passar os dados do usuário como props.
-interface User {
-  name?: string | null
-  email?: string | null
-  image?: string | null
-}
+import { Card } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { cn } from "@/lib/utils"
 
 interface UserNavProps {
-  user: User | null
-}
-
-function getInitials(name: string): string {
-  const names = name.split(' ');
-  if (names.length === 0) return 'U';
-  const firstInitial = names[0][0] || '';
-  const lastInitial = names.length > 1 ? names[names.length - 1][0] || '' : '';
-  return (firstInitial + lastInitial).toUpperCase();
+  user: {
+    name?: string | null
+    email?: string | null
+    image?: string | null
+  } | null
 }
 
 export function UserNav({ user }: UserNavProps) {
-  if (!user) {
-    return null; // Ou um botão de login
+  const { setTheme, theme } = useTheme()
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSignOut = async () => {
+    setIsLoading(true)
+    try {
+      await signOut({ callbackUrl: '/auth/signin' })
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const userName = user.name || "Usuário";
-  const userEmail = user.email || "";
+  if (!user) {
+    return (
+      <Card className="p-4 glass-effect">
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-xl bg-muted animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 bg-muted rounded animate-pulse" />
+            <div className="h-3 bg-muted rounded w-2/3 animate-pulse" />
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  const userInitials = user.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : user.email?.[0]?.toUpperCase() || 'U'
+
+  const themeIcons = {
+    light: Sun,
+    dark: Moon,
+    system: Monitor,
+  }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-full justify-start px-2">
-          <Avatar className="h-8 w-8 mr-2">
-            <AvatarImage src={user.image || undefined} alt={`@${userName}`} />
-            <AvatarFallback>{getInitials(userName)}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col items-start space-y-1 truncate">
-             <p className="text-sm font-medium leading-none truncate">{userName}</p>
-             <p className="text-xs leading-none text-muted-foreground truncate">{userEmail}</p>
-          </div>
+        <Button
+          variant="ghost"
+          className="w-full p-0 h-auto hover:bg-transparent focus-visible:ring-0"
+        >
+          <Card className="w-full p-4 glass-effect hover-lift-gentle cursor-pointer transition-all-smooth">
+            <div className="flex items-center gap-3">
+              <Avatar className="size-10 border-2 border-primary/20">
+                <AvatarImage 
+                  src={user.image || undefined} 
+                  alt={user.name || 'Usuário'} 
+                />
+                <AvatarFallback className="gradient-primary text-white font-semibold">
+                  {userInitials}
+                </AvatarFallback>
+              </Avatar>
+              
+              <div className="flex-1 text-left min-w-0">
+                <p className="font-medium text-sm truncate">
+                  {user.name || 'Usuário'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          </Card>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
+      
+      <DropdownMenuContent 
+        className="w-64 shadow-modern-xl animate-scale-in" 
+        align="end" 
+        side="top"
+      >
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{userName}</p>
+            <p className="text-sm font-medium leading-none">
+              {user.name || 'Usuário'}
+            </p>
             <p className="text-xs leading-none text-muted-foreground">
-              {userEmail}
+              {user.email}
             </p>
           </div>
         </DropdownMenuLabel>
+        
         <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem>
-            <UserIcon className="mr-2 h-4 w-4" />
-            <span>Meu Perfil</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-             <HelpCircle className="mr-2 h-4 w-4" />
-            <span>Ajuda & Suporte</span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+        
+        <DropdownMenuItem className="gap-2 cursor-pointer">
+          <User className="size-4" />
+          Perfil
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem className="gap-2 cursor-pointer">
+          <Settings className="size-4" />
+          Configurações
+        </DropdownMenuItem>
+        
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="gap-2">
+            {theme && themeIcons[theme as keyof typeof themeIcons] && (
+              React.createElement(themeIcons[theme as keyof typeof themeIcons], {
+                className: "size-4"
+              })
+            )}
+            Tema
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="shadow-modern-xl">
+            <DropdownMenuItem 
+              onClick={() => setTheme("light")}
+              className="gap-2 cursor-pointer"
+            >
+              <Sun className="size-4" />
+              Claro
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => setTheme("dark")}
+              className="gap-2 cursor-pointer"
+            >
+              <Moon className="size-4" />
+              Escuro
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => setTheme("system")}
+              className="gap-2 cursor-pointer"
+            >
+              <Monitor className="size-4" />
+              Sistema
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/login' })}>
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Sair</span>
+        
+        <DropdownMenuItem 
+          className="gap-2 cursor-pointer text-destructive focus:text-destructive" 
+          onClick={handleSignOut}
+          disabled={isLoading}
+        >
+          <LogOut className="size-4" />
+          {isLoading ? 'Saindo...' : 'Sair'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

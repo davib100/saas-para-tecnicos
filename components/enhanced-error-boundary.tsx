@@ -1,216 +1,181 @@
-"use client"
+'use client'
 
-import React from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { AlertTriangle, RefreshCw, Home, ChevronDown, Bug, Copy } from "lucide-react"
-import { logComponentError } from "@/lib/error-logger"
-import { toast } from "sonner"
+import React, { Component, ReactNode } from 'react'
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-interface EnhancedErrorBoundaryState {
+interface Props {
+  children: ReactNode
+  componentName?: string
+  maxRetries?: number
+  fallback?: ReactNode
+}
+
+interface State {
   hasError: boolean
   error?: Error
   errorInfo?: React.ErrorInfo
-  errorId?: string
   retryCount: number
-  showDetails: boolean
 }
 
-interface EnhancedErrorBoundaryProps {
-  children: React.ReactNode
-  fallback?: React.ComponentType<{ error: Error; reset: () => void; errorId?: string }>
-  componentName?: string
-  maxRetries?: number
-}
-
-export class EnhancedErrorBoundary extends React.Component<EnhancedErrorBoundaryProps, EnhancedErrorBoundaryState> {
-  private retryTimeout?: NodeJS.Timeout
-
-  constructor(props: EnhancedErrorBoundaryProps) {
+export class EnhancedErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
     super(props)
     this.state = {
       hasError: false,
-      retryCount: 0,
-      showDetails: false,
+      retryCount: 0
     }
   }
 
-  static getDerivedStateFromError(error: Error): Partial<EnhancedErrorBoundaryState> {
-    return { hasError: true, error }
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return {
+      hasError: true,
+      error
+    }
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[v0] Enhanced Error Boundary caught error:", error, errorInfo)
-
-    // Log error with detailed information
-    const errorId = logComponentError(this.props.componentName || "ErrorBoundary", error, {
-      errorInfo: errorInfo.componentStack,
-      retryCount: this.state.retryCount,
-      timestamp: new Date().toISOString(),
-      props: this.props,
-    })
-
+    console.error(`Error in ${this.props.componentName || 'component'}:`, error, errorInfo)
+    
     this.setState({
       error,
-      errorInfo,
-      errorId,
-      hasError: true,
+      errorInfo
     })
+
+    // Report to error logging service
+    this.reportError(error, errorInfo)
   }
 
-  handleReset = () => {
-    const maxRetries = this.props.maxRetries || 3
-
-    if (this.state.retryCount >= maxRetries) {
-      toast.error(`Máximo de ${maxRetries} tentativas atingido. Recarregue a página.`)
-      return
-    }
-
-    this.setState((prevState) => ({
-      hasError: false,
-      error: undefined,
-      errorInfo: undefined,
-      errorId: undefined,
-      retryCount: prevState.retryCount + 1,
-      showDetails: false,
-    }))
-
-    // Auto-retry with exponential backoff
-    if (this.retryTimeout) {
-      clearTimeout(this.retryTimeout)
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, this.state.retryCount), 10000)
-    this.retryTimeout = setTimeout(() => {
-      // Force re-render
-      this.forceUpdate()
-    }, delay)
-  }
-
-  handleCopyError = () => {
-    const errorDetails = {
-      message: this.state.error?.message,
-      stack: this.state.error?.stack,
-      componentStack: this.state.errorInfo?.componentStack,
-      errorId: this.state.errorId,
+  reportError = (error: Error, errorInfo: React.ErrorInfo) => {
+    // In a real app, you would send this to your error reporting service
+    const errorData = {
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+      component: this.props.componentName,
       timestamp: new Date().toISOString(),
       userAgent: navigator.userAgent,
       url: window.location.href,
     }
 
-    navigator.clipboard.writeText(JSON.stringify(errorDetails, null, 2))
-    toast.success("Detalhes do erro copiados para a área de transferência")
+    console.error('Error Report:', errorData)
+    
+    // Example: Send to error reporting service
+    // errorReportingService.report(errorData)
   }
 
-  componentWillUnmount() {
-    if (this.retryTimeout) {
-      clearTimeout(this.retryTimeout)
+  handleRetry = () => {
+    const { maxRetries = 3 } = this.props
+    
+    if (this.state.retryCount < maxRetries) {
+      this.setState({
+        hasError: false,
+        error: undefined,
+        errorInfo: undefined,
+        retryCount: this.state.retryCount + 1
+      })
     }
+  }
+
+  handleReset = () => {
+    this.setState({
+      hasError: false,
+      error: undefined,
+      errorInfo: undefined,
+      retryCount: 0
+    })
+  }
+
+  handleHome = () => {
+    window.location.href = '/'
   }
 
   render() {
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        const FallbackComponent = this.props.fallback
-        return <FallbackComponent error={this.state.error!} reset={this.handleReset} errorId={this.state.errorId} />
-      }
-
-      const maxRetries = this.props.maxRetries || 3
+      const { maxRetries = 3, fallback, componentName } = this.props
       const canRetry = this.state.retryCount < maxRetries
 
+      if (fallback) {
+        return fallback
+      }
+
       return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <Card className="max-w-2xl w-full">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mb-4">
-                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+        <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-6">
+          <Card className="w-full max-w-2xl shadow-modern-2xl animate-scale-in">
+            <CardHeader className="text-center pb-6">
+              <div className="size-16 mx-auto mb-4 rounded-2xl bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="size-8 text-destructive" />
               </div>
-              <CardTitle className="text-xl">Algo deu errado</CardTitle>
-              <CardDescription>
-                Ocorreu um erro inesperado no componente {this.props.componentName || "desconhecido"}.
-                {this.state.errorId && (
-                  <Badge variant="outline" className="ml-2">
-                    ID: {this.state.errorId.slice(-8)}
-                  </Badge>
-                )}
-              </CardDescription>
+              <CardTitle className="text-2xl text-destructive">
+                Oops! Algo deu errado
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {this.state.retryCount > 0 && (
-                <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    Tentativa {this.state.retryCount} de {maxRetries}
-                  </p>
-                </div>
-              )}
-
-              <Collapsible open={this.state.showDetails} onOpenChange={(open) => this.setState({ showDetails: open })}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between bg-transparent">
-                    <span className="flex items-center">
-                      <Bug className="w-4 h-4 mr-2" />
-                      Detalhes técnicos
-                    </span>
-                    <ChevronDown className="w-4 h-4" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-4">
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg space-y-3">
-                    <div>
-                      <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">Mensagem do erro:</p>
-                      <p className="text-xs text-red-700 dark:text-red-300 font-mono break-all">
-                        {this.state.error?.message}
-                      </p>
-                    </div>
-
-                    {this.state.error?.stack && (
+            
+            <CardContent className="space-y-6">
+              <div className="text-center space-y-3">
+                <p className="text-muted-foreground">
+                  Encontramos um erro inesperado {componentName && `no componente ${componentName}`}.
+                  Nossa equipe foi notificada e está trabalhando para resolver isso.
+                </p>
+                
+                {process.env.NODE_ENV === 'development' && this.state.error && (
+                  <details className="mt-4 p-4 bg-muted rounded-xl text-left">
+                    <summary className="cursor-pointer font-semibold text-sm mb-2">
+                      Detalhes do erro (modo desenvolvimento)
+                    </summary>
+                    <div className="text-xs text-muted-foreground space-y-2">
                       <div>
-                        <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">Stack trace:</p>
-                        <pre className="text-xs text-red-700 dark:text-red-300 font-mono bg-red-100 dark:bg-red-900/40 p-2 rounded overflow-x-auto max-h-32">
-                          {this.state.error.stack}
-                        </pre>
+                        <strong>Erro:</strong> {this.state.error.message}
                       </div>
-                    )}
+                      {this.state.error.stack && (
+                        <div>
+                          <strong>Stack:</strong>
+                          <pre className="mt-1 whitespace-pre-wrap break-all">
+                            {this.state.error.stack}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+              </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={this.handleCopyError}
-                      className="w-full bg-transparent"
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copiar detalhes do erro
-                    </Button>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-
-              <div className="flex gap-2">
-                {canRetry ? (
-                  <Button onClick={this.handleReset} className="flex-1">
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Tentar Novamente ({maxRetries - this.state.retryCount} restantes)
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={() => window.location.reload()} className="flex-1">
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Recarregar Página
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                {canRetry && (
+                  <Button 
+                    onClick={this.handleRetry}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className="size-4" />
+                    Tentar novamente ({maxRetries - this.state.retryCount} tentativas restantes)
                   </Button>
                 )}
-
-                <Button variant="outline" onClick={() => (window.location.href = "/")} className="flex-1">
-                  <Home className="w-4 h-4 mr-2" />
-                  Ir para Início
+                
+                <Button 
+                  variant="outline" 
+                  onClick={this.handleReset}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className="size-4" />
+                  Resetar componente
+                </Button>
+                
+                <Button 
+                  variant="secondary" 
+                  onClick={this.handleHome}
+                  className="flex items-center gap-2"
+                >
+                  <Home className="size-4" />
+                  Voltar ao início
                 </Button>
               </div>
 
-              {process.env.NODE_ENV === "development" && (
-                <div className="text-xs text-muted-foreground text-center">
-                  Modo de desenvolvimento - Detalhes completos disponíveis no console
-                </div>
-              )}
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">
+                  Se o problema persistir, entre em contato com o suporte técnico.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -219,25 +184,4 @@ export class EnhancedErrorBoundary extends React.Component<EnhancedErrorBoundary
 
     return this.props.children
   }
-}
-
-// Hook para usar o error boundary programaticamente
-export function useErrorBoundary() {
-  const [error, setError] = React.useState<Error | null>(null)
-
-  const resetError = React.useCallback(() => {
-    setError(null)
-  }, [])
-
-  const captureError = React.useCallback((error: Error) => {
-    setError(error)
-  }, [])
-
-  React.useEffect(() => {
-    if (error) {
-      throw error
-    }
-  }, [error])
-
-  return { captureError, resetError }
 }

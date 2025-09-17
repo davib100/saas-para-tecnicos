@@ -1,0 +1,74 @@
+{
+    "name": "TechOS - Sistema de Ordem de Serviço",
+    "short_name": "TechOS",
+    "description": "Sistema moderno para gerenciamento de ordens de serviço, clientes e produtos",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f0f23",
+    "theme_color": "#6366f1",
+    "orientation": "portrait-primary",
+    "scope": "/",
+    "lang": "pt-BR",
+    "categories": ["business", "productivity", "utilities"],
+    "icons": [
+      {
+        "src": "/icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "any maskable"
+      },
+      {
+        "src": "/icon-512.png", 
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "any maskable"
+      }
+    ],
+    "shortcuts": [
+      {
+        "name": "Nova OS",
+        "short_name": "Nova OS",
+        "description": "Criar nova ordem de serviço",
+        "url": "/?action=new-order",
+        "icons": [
+          {
+            "src": "/shortcut-new-order.png",
+            "sizes": "96x96"
+          }
+        ]
+      },
+      {
+        "name": "Clientes",
+        "short_name": "Clientes", 
+        "description": "Gerenciar clientes",
+        "url": "/?view=clients",
+        "icons": [
+          {
+            "src": "/shortcut-clients.png",
+            "sizes": "96x96"
+          }
+        ]
+      },
+      {
+        "name": "Dashboard",
+        "short_name": "Dashboard",
+        "description": "Ver painel principal",
+        "url": "/?view=dashboard",
+        "icons": [
+          {
+            "src": "/shortcut-dashboard.png", 
+            "sizes": "96x96"
+          }
+        ]
+      }
+    ],
+    "related_applications": [],
+    "prefer_related_applications": false,
+    "dir": "ltr",
+    "protocol_handlers": [
+      {
+        "protocol": "web+techos",
+        "url": "/?action=%s"
+      }
+    ]
+  }

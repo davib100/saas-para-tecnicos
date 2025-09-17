@@ -1,8 +1,8 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { loginSchema } from "@/lib/validators";
-import { authenticateUser, generateToken } from "@/lib/auth";
-
+import { authenticateUser } from "@/lib/auth-logic";
+import { generateToken } from "@/lib/auth";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

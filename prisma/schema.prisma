@@ -379,6 +379,7 @@ model Backup {
   expiresAt   DateTime?
   createdAt   DateTime     @default(now())
   completedAt DateTime?
+  errorMessage String?     @db.Text
 
   companyId   String
   company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -395,6 +396,7 @@ enum BackupType {
   FULL
   INCREMENTAL
   MANUAL
+  DAILY
 
   @@schema("public")
 }

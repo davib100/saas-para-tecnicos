@@ -1,21 +1,46 @@
 import * as React from 'react'
-
 import { cn } from '@/lib/utils'
 
-function Input({ className, type, ...props }: React.ComponentProps<'input'>) {
-  return (
-    <input
-      type={type}
-      data-slot="input"
-      className={cn(
-        'file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
-        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-        'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
-        className,
-      )}
-      {...props}
-    />
-  )
+export interface InputProps extends React.ComponentProps<'input'> {
+  variant?: 'default' | 'glass' | 'bordered'
+  inputSize?: 'sm' | 'default' | 'lg'
 }
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, variant = 'default', inputSize = 'default', ...props }, ref) => {
+    const variants = {
+      default: 'bg-background border border-input',
+      glass: 'glass-effect border border-border/50',
+      bordered: 'bg-background border-2 border-primary/20 focus:border-primary/50',
+    }
+
+    const sizes = {
+      sm: 'h-9 px-3 text-sm',
+      default: 'h-11 px-4',
+      lg: 'h-13 px-6 text-lg',
+    }
+
+    return (
+      <input
+        type={type}
+        className={cn(
+          'flex w-full rounded-xl text-base transition-all-smooth',
+          'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground',
+          'placeholder:text-muted-foreground',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          'shadow-modern focus:shadow-modern-xl',
+          variants[variant],
+          sizes[inputSize],
+          className,
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+
+Input.displayName = "Input"
 
 export { Input }
