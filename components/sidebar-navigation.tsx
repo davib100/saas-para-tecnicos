@@ -2,7 +2,9 @@
 
 import { Home, Users, Package, ClipboardList, BarChart3, Settings, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { UserNav } from "@/components/user-nav" // Importando o novo componente
+import { UserNav } from "@/components/user-nav"
+import useSWR from 'swr'
+import { Skeleton } from "@/components/ui/skeleton"
 
 // Supondo que você tenha um tipo User definido em algum lugar
 interface User {
@@ -12,12 +14,12 @@ interface User {
 }
 
 const NAV_ITEMS = [
-  { view: "dashboard", label: "Dashboard", icon: Home },
-  { view: "clients", label: "Clientes", icon: Users },
-  { view: "products", label: "Produtos", icon: Package },
-  { view: "orders", label: "Ordens de Serviço", icon: ClipboardList },
-  { view: "reports", label: "Relatórios", icon: BarChart3 },
-  { view: "settings", label: "Configurações", icon: Settings },
+  { view: "dashboard", label: "Dashboard", icon: Home, counterKey: null },
+  { view: "clients", label: "Clientes", icon: Users, counterKey: 'clients' },
+  { view: "products", label: "Produtos", icon: Package, counterKey: 'products' },
+  { view: "orders", label: "Ordens de Serviço", icon: ClipboardList, counterKey: 'orders' },
+  { view: "reports", label: "Relatórios", icon: BarChart3, counterKey: null },
+  { view: "settings", label: "Configurações", icon: Settings, counterKey: null },
 ] as const;
 
 interface SidebarNavigationProps {
@@ -29,24 +31,49 @@ interface SidebarNavigationProps {
   user: User | null; // Adicionando a prop user
 }
 
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
 const NavLink = ({ 
     view, 
     label, 
     icon: Icon, 
     currentView, 
-    onViewChange 
-}: typeof NAV_ITEMS[number] & { currentView: string; onViewChange: (view: string) => void; }) => (
+    onViewChange,
+    counterKey,
+    stats,
+    isLoading
+}: typeof NAV_ITEMS[number] & { 
+  currentView: string; 
+  onViewChange: (view: string) => void; 
+  stats: any;
+  isLoading: boolean;
+}) => (
   <Button 
     variant={currentView === view ? "secondary" : "ghost"} 
     onClick={() => onViewChange(view)}
-    className="justify-start w-full"
+    className="justify-start w-full relative"
   >
     <Icon className="w-4 h-4 mr-2" />
-    {label}
+    <span>{label}</span>
+    {counterKey && (
+      <div className="ml-auto">
+        {isLoading ? (
+          <Skeleton className="h-4 w-6 rounded-md" />
+        ) : (
+          <span className="text-xs font-mono bg-muted text-muted-foreground rounded-md px-1.5 py-0.5">
+            {stats?.[counterKey] ?? 0}
+          </span>
+        )}
+      </div>
+    )}
   </Button>
 );
 
 export const SidebarNavigation = ({ currentView, onViewChange, isMobile, isSidebarOpen, setIsSidebarOpen, user }: SidebarNavigationProps) => {
+  const { data: stats, error, isLoading } = useSWR('/api/dashboard/stats', fetcher, {
+    refreshInterval: 30000 // Atualiza a cada 30 segundos
+  });
+
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b">
@@ -54,10 +81,16 @@ export const SidebarNavigation = ({ currentView, onViewChange, isMobile, isSideb
       </div>
       <nav className="flex-1 p-4 space-y-2">
         {NAV_ITEMS.map(item => (
-          <NavLink key={item.view} {...item} currentView={currentView} onViewChange={onViewChange} />
+          <NavLink 
+            key={item.view} 
+            {...item} 
+            currentView={currentView} 
+            onViewChange={onViewChange} 
+            stats={stats} 
+            isLoading={isLoading} 
+          />
         ))}
       </nav>
-      {/* Substituindo o botão de Ajuda pelo UserNav */}
       <div className="p-2 mt-auto border-t">
         <UserNav user={user} />
       </div>

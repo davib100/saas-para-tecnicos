@@ -3,57 +3,19 @@ import { prisma } from "@/lib/prisma"
 import { getAuthUser } from "@/lib/auth"
 import { createApiHandler } from "@/lib/error-handler"
 
-export const GET = createApiHandler(async () => {
+export const GET = createApiHandler(async (request: Request) => {
   const user = await getAuthUser()
-  if (!user || !user.company?.id) {
+  if (!user || !user.company) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const companyId = user.company.id
 
-  const [osAndamento, osConcluidas, orcamentosPendentes, receitaBruta] = await prisma.$transaction([
-    // OS em Andamento
-    prisma.serviceOrder.count({
-      where: {
-        companyId: user.company.id,
-        status: { in: ["Em Execução", "Aguardando Aprovação", "Orçamento Gerado", "Rascunho"] },
-      },
-    }),
-    // OS Concluídas no mês atual
-    prisma.serviceOrder.count({
-      where: {
-        companyId: user.company.id,
-        status: "Concluído",
-        updatedAt: { gte: startOfMonth },
-      },
-    }),
-    // Orçamentos Pendentes
-    prisma.serviceOrder.count({
-      where: {
-        companyId: user.company.id,
-        status: "Aguardando Aprovação",
-      },
-    }),
-    // Receita Mensal (soma dos valores das OS concluídas no mês)
-    prisma.serviceOrder.aggregate({
-      _sum: {
-        estimatedValue: true,
-      },
-      where: {
-        companyId: user.company.id,
-        status: "Concluído",
-        updatedAt: { gte: startOfMonth },
-      },
-    }),
+  const [clients, products, orders] = await Promise.all([
+    prisma.client.count({ where: { companyId } }),
+    prisma.product.count({ where: { companyId } }),
+    prisma.serviceOrder.count({ where: { companyId } }),
   ])
 
-  const stats = {
-    osAndamento: osAndamento || 0,
-    osConcluidas: osConcluidas || 0,
-    orcamentosPendentes: orcamentosPendentes || 0,
-    receitaMensal: receitaBruta._sum.estimatedValue || 0,
-  }
-
-  return NextResponse.json(stats)
-}, "dashboard/stats/GET_FIXED")
+  return NextResponse.json({ clients, products, orders })
+}, "stats/GET")

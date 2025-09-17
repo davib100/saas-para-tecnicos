@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js'
 import { prisma } from './prisma'
 
@@ -22,6 +23,7 @@ const supabaseClient = createClient(
 )
 
 export async function authenticateUser(email: string, password: string): Promise<AuthUser> {
+  console.log(`[AuthLogic] Tentando autenticar o usuário: ${email}`);
   const normalizedEmail = email.toLowerCase().trim()
 
   const { data: authResponse, error: authError } = await supabaseClient.auth.signInWithPassword({ 
@@ -30,33 +32,62 @@ export async function authenticateUser(email: string, password: string): Promise
   })
   
   if (authError || !authResponse.user) {
+    console.error('[AuthLogic] Erro de autenticação do Supabase:', authError?.message);
     throw new Error("E-mail ou senha incorretos.")
   }
 
-  const profile = await prisma.profile.findUnique({
-    where: { id: authResponse.user.id },
-    include: { company: true },
-  })
+  console.log(`[AuthLogic] Supabase OK. Usuário ID: ${authResponse.user.id}. Buscando perfil no Prisma...`);
 
-  if (!profile) {
-    throw new Error("Configuração de usuário inválida. Contate o suporte.")
-  }
-  
-  if (!profile.isActive) {
-    throw new Error("Esta conta de usuário está desativada.")
-  }
-  
-  if (profile.company && profile.company.status !== 'ACTIVE') {
-    throw new Error("A empresa associada a esta conta está inativa.")
-  }
+  try {
+    const profile = await prisma.profile.findUnique({
+      where: { id: authResponse.user.id },
+      include: { company: true },
+    })
 
-  return {
-    id: profile.id,
-    name: profile.name,
-    email: profile.email,
-    role: profile.role,
-    isActive: profile.isActive,
-    lastLogin: profile.lastLogin || undefined,
-    company: profile.company || null,
+    if (!profile) {
+      console.error(`[AuthLogic] Perfil não encontrado no Prisma para o ID: ${authResponse.user.id}`);
+      throw new Error("Configuração de usuário inválida. Contate o suporte.")
+    }
+
+    console.log(`[AuthLogic] Perfil do Prisma encontrado.`);
+
+    if (!profile.isActive) {
+      console.warn(`[AuthLogic] Tentativa de login por usuário inativo: ${email} (ID: ${profile.id})`);
+      throw new Error("Esta conta de usuário está desativada.")
+    }
+    
+    if (profile.company && profile.company.status !== 'ACTIVE') {
+      console.warn(`[AuthLogic] Tentativa de login com empresa inativa: ${profile.company.name} (Usuário: ${email})`);
+      throw new Error("A empresa associada a esta conta está inativa.")
+    }
+
+    console.log(`[AuthLogic] Autenticação bem-sucedida para: ${email}`);
+
+    // Solução para o erro de serialização do BigInt
+    const companyData = profile.company
+      ? {
+          ...profile.company,
+          // Convertendo campos BigInt para Number para serem serializáveis em JSON
+          // O Prisma pode retornar campos como maxStorage ou outros campos numéricos grandes como BigInt
+          maxStorage: profile.company.maxStorage ? Number(profile.company.maxStorage) : null,
+          maxUsers: profile.company.maxUsers ? Number(profile.company.maxUsers) : null,
+        }
+      : null;
+
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      role: profile.role,
+      isActive: profile.isActive,
+      lastLogin: profile.lastLogin || undefined,
+      company: companyData, // Usando os dados da empresa serializáveis
+    }
+  } catch (error) {
+    console.error('[AuthLogic] Erro durante a busca ou verificação do perfil no Prisma:', error);
+    if (error instanceof Error && ["Configuração de usuário inválida. Contate o suporte.", "Esta conta de usuário está desativada.", "A empresa associada a esta conta está inativa."].includes(error.message)) {
+      throw error;
+    }
+    throw new Error("Ocorreu um erro no servidor ao verificar o perfil de usuário.");
   }
 }

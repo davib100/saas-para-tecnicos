@@ -1,11 +1,10 @@
-"use client"
+'use client'
 
 import type React from "react"
-
-import { useAuth } from "@/lib/auth-context"
+import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
+import { LoadingSpinner } from "@/components/loading-spinner"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -13,53 +12,48 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { data: session, status } = useSession()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push("/login")
+    if (status === 'unauthenticated') {
+      router.push('/login')
     }
-  }, [loading, isAuthenticated, router])
+  }, [status, router])
 
-  if (loading) {
+  if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-[200px]" />
-            <Skeleton className="h-4 w-[300px]" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-3">
-                <Skeleton className="h-[125px] w-full rounded-xl" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-[250px]" />
-                  <Skeleton className="h-4 w-[200px]" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <LoadingSpinner size="lg" />
       </div>
     )
   }
 
-  if (!isAuthenticated) {
-    return null
-  }
+  if (status === 'authenticated') {
+    // Se uma role é necessária, verificamos se o usuário tem essa role.
+    // Assumimos que a role está em `session.user.role`.
+    // Ajuste `session.user.role` conforme a estrutura do seu objeto de sessão.
+    // @ts-ignore
+    const userRole = session.user?.role
 
-  if (requiredRole && user?.role !== requiredRole && user?.role !== "admin") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-2">Access Denied</h1>
-          <p className="text-muted-foreground">You don't have permission to access this page.</p>
+    if (requiredRole && userRole !== requiredRole && userRole !== 'admin') {
+      // Opcional: redirecionar para uma página de acesso negado
+      // router.push('/unauthorized')
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Acesso Negado</h1>
+            <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
+
+    // Se autenticado e com a role correta (ou nenhuma role necessária), renderiza o conteúdo.
+    return <>{children}</>
   }
 
-  return <>{children}</>
+  // Se não estiver carregando e não estiver autenticado, não renderiza nada
+  // pois o useEffect já está cuidando do redirecionamento.
+  return null
 }

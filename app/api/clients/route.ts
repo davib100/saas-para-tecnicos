@@ -4,18 +4,43 @@ import { getAuthUser } from "@/lib/auth"
 import { ClientSchema as clientSchema } from "@/lib/validators"
 import { createApiHandler } from "@/lib/error-handler"
 
-export const GET = createApiHandler(async (request: Request) => {
+export const GET = createApiHandler(async (request: NextRequest) => {
   const user = await getAuthUser()
   if (!user || !user.company) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const { searchParams } = new URL(request.url)
+  const page = parseInt(searchParams.get("page") || "1", 10)
+  const pageSize = parseInt(searchParams.get("pageSize") || "10", 10)
+  const searchTerm = searchParams.get("search") || ""
+
+  const whereCondition = {
+    companyId: user.company.id,
+    ...(searchTerm && {
+      OR: [
+        { nome: { contains: searchTerm, mode: "insensitive" } },
+        { documento: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    }),
+  }
+
   const clients = await prisma.client.findMany({
-    where: { companyId: user.company.id },
+    where: whereCondition,
     orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
   })
 
-  return NextResponse.json(clients)
+  const totalClients = await prisma.client.count({
+    where: whereCondition,
+  })
+
+  return NextResponse.json({
+    clients,
+    totalPages: Math.ceil(totalClients / pageSize),
+    totalClients,
+  })
 }, "clients/GET")
 
 export const POST = createApiHandler(async (request: Request) => {
