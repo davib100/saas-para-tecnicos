@@ -1,7 +1,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { loginSchema } from "@/lib/validators";
-import { authenticateUser } from "@/lib/auth-logic";
+import { authenticateUser } from "@/lib/server/auth-logic";
 import { generateToken } from "@/lib/auth";
 export async function POST(request: NextRequest) {
   try {

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, memo } from "react"
 import { z } from "zod"
 import { useDebounce } from "@/lib/hooks/use-debounce"
-import { ClientSchema } from "@/lib/validators"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,12 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Edit, Trash2, User, Building, Phone, FileText, MapPin, Users as UsersIcon, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react"
 import { ClientWizard, type SaveData } from "./client-wizard"
 import { Skeleton } from "@/components/ui/skeleton"
-
-export interface Client extends z.infer<typeof ClientSchema> {
-  id: string
-  status: "Ativo" | "Inativo"
-  dataCadastro: string
-}
+import { Client } from "@/types/client"
 
 const EmptyState = memo(() => (
   <div className="text-center text-muted-foreground p-10 border-2 border-dashed rounded-lg mt-4">

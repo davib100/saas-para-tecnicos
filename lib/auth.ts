@@ -41,6 +41,8 @@ export async function getAuthUser(): Promise<AuthUser | null> {
           name: true,
           status: true,
           plan: true,
+          maxUsers: true,
+          maxStorage: true,
         },
       },
     },
@@ -54,6 +56,14 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     return null
   }
 
+  const companyData = profile.company
+    ? {
+        ...profile.company,
+        maxUsers: profile.company.maxUsers ? Number(profile.company.maxUsers) : null,
+        maxStorage: profile.company.maxStorage ? Number(profile.company.maxStorage) : null,
+      }
+    : null;
+
   return {
     id: profile.id,
     name: profile.name,
@@ -61,7 +71,7 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     role: profile.role,
     isActive: profile.isActive,
     lastLogin: profile.lastLogin || undefined,
-    company: profile.company || null,
+    company: companyData,
   }
 }
 

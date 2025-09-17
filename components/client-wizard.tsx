@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { ClientObjectSchema } from "@/lib/validators"
 import { toast } from "sonner"
-import { type Client } from "./client-management"
+import { type Client } from "@/types/client"
 import InputMask from "react-input-mask"
 
 import { Button } from "@/components/ui/button"

@@ -1,6 +1,25 @@
 
 import { createClient } from '@supabase/supabase-js'
-import { prisma } from './prisma'
+import { prisma } from '@/lib/prisma' // Use o singleton oficial do Prisma
+
+// Tipagem para o cache global do Supabase
+interface GlobalCache {
+  supabaseClient?: any
+}
+
+// Inicializa o cache global
+const globalCache: GlobalCache = {}
+
+// Singleton para o Supabase Client
+function getSupabaseClient() {
+  if (!globalCache.supabaseClient) {
+    globalCache.supabaseClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  }
+  return globalCache.supabaseClient
+}
 
 interface AuthUser {
   id: string
@@ -12,19 +31,11 @@ interface AuthUser {
   company: any | null
 }
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const supabaseClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 export async function authenticateUser(email: string, password: string): Promise<AuthUser> {
-  console.log(`[AuthLogic] Tentando autenticar o usuário: ${email}`);
+  const supabaseClient = getSupabaseClient()
   const normalizedEmail = email.toLowerCase().trim()
+
+  console.log(`[AuthLogic] Tentando autenticar o usuário: ${email}`);
 
   const { data: authResponse, error: authError } = await supabaseClient.auth.signInWithPassword({ 
     email: normalizedEmail, 
@@ -39,6 +50,7 @@ export async function authenticateUser(email: string, password: string): Promise
   console.log(`[AuthLogic] Supabase OK. Usuário ID: ${authResponse.user.id}. Buscando perfil no Prisma...`);
 
   try {
+    // Agora usando a instância importada do prisma
     const profile = await prisma.profile.findUnique({
       where: { id: authResponse.user.id },
       include: { company: true },
@@ -63,12 +75,9 @@ export async function authenticateUser(email: string, password: string): Promise
 
     console.log(`[AuthLogic] Autenticação bem-sucedida para: ${email}`);
 
-    // Solução para o erro de serialização do BigInt
     const companyData = profile.company
       ? {
           ...profile.company,
-          // Convertendo campos BigInt para Number para serem serializáveis em JSON
-          // O Prisma pode retornar campos como maxStorage ou outros campos numéricos grandes como BigInt
           maxStorage: profile.company.maxStorage ? Number(profile.company.maxStorage) : null,
           maxUsers: profile.company.maxUsers ? Number(profile.company.maxUsers) : null,
         }
@@ -81,7 +90,7 @@ export async function authenticateUser(email: string, password: string): Promise
       role: profile.role,
       isActive: profile.isActive,
       lastLogin: profile.lastLogin || undefined,
-      company: companyData, // Usando os dados da empresa serializáveis
+      company: companyData,
     }
   } catch (error) {
     console.error('[AuthLogic] Erro durante a busca ou verificação do perfil no Prisma:', error);

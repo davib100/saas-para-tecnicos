@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth"
-import { exportToExcel } from "@/lib/backup"
+import { exportToExcel, type BackupData } from "@/lib/backup"
 import { prisma } from "@/lib/prisma"
 import { format, isValid, differenceInDays } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -13,13 +13,22 @@ const exportParamsSchema = z.object({
   tables: z.string().optional(),
 })
 
-const allowedTables = ["orders", "clients", "products", "activities", "invoices"] as const
+const allowedTables = [
+  "orders",
+  "clients",
+  "products",
+  "activities",
+  "invoices",
+] as const
 type AllowedTable = (typeof allowedTables)[number]
 
 export const GET = createApiHandler(async (request: NextRequest) => {
-  const user = await getAuthUser(request)
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const user = await getAuthUser()
+  if (!user || !user.company?.id) {
+    return NextResponse.json(
+      { error: "Unauthorized or no company associated" },
+      { status: 401 }
+    )
   }
 
   const { searchParams } = new URL(request.url)
@@ -35,7 +44,10 @@ export const GET = createApiHandler(async (request: NextRequest) => {
   if (params.from) {
     const parsedFrom = new Date(params.from)
     if (!isValid(parsedFrom)) {
-      return NextResponse.json({ error: "Invalid 'from' date format" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Invalid 'from' date format" },
+        { status: 400 }
+      )
     }
     from = parsedFrom
   }
@@ -43,22 +55,35 @@ export const GET = createApiHandler(async (request: NextRequest) => {
   if (params.to) {
     const parsedTo = new Date(params.to)
     if (!isValid(parsedTo)) {
-      return NextResponse.json({ error: "Invalid 'to' date format" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Invalid 'to' date format" },
+        { status: 400 }
+      )
     }
     to = parsedTo
   }
 
   const daysDifference = differenceInDays(to, from)
   if (daysDifference > 365) {
-    return NextResponse.json({ error: "Export range cannot exceed 365 days" }, { status: 400 })
+    return NextResponse.json(
+      { error: "Export range cannot exceed 365 days" },
+      { status: 400 }
+    )
   }
 
   if (from > to) {
-    return NextResponse.json({ error: "'from' date cannot be after 'to' date" }, { status: 400 })
+    return NextResponse.json(
+      { error: "'from' date cannot be after 'to' date" },
+      { status: 400 }
+    )
   }
 
-  const requestedTables = params.tables ? params.tables.split(",") : allowedTables
-  const tables = requestedTables.filter((table): table is AllowedTable => allowedTables.includes(table as AllowedTable))
+  const requestedTables = params.tables
+    ? params.tables.split(",")
+    : allowedTables
+  const tables = requestedTables.filter((table): table is AllowedTable =>
+    allowedTables.includes(table as AllowedTable)
+  )
 
   if (tables.length === 0) {
     return NextResponse.json({ error: "No valid tables specified" }, { status: 400 })
@@ -73,23 +98,29 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     "to:",
     format(to, "dd/MM/yyyy", { locale: ptBR }),
     "tables:",
-    tables,
+    tables
   )
 
-  const data: Record<string, any[]> = {}
+  const data: BackupData = {
+    clients: [],
+    products: [],
+    orders: [],
+    activities: [],
+    invoices: [],
+  }
 
   try {
     if (tables.includes("clients")) {
       data.clients = await prisma.client.findMany({
         where: {
-          companyId: user.companyId,
+          companyId: user.company.id,
           createdAt: { gte: from, lte: to },
         },
         select: {
           id: true,
-          name: true,
+          nome: true,
           email: true,
-          phone: true,
+          telefone: true,
           address: true,
           createdAt: true,
           updatedAt: true,
@@ -101,8 +132,11 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     if (tables.includes("products")) {
       data.products = await prisma.product.findMany({
         where: {
-          companyId: user.companyId,
-          OR: [{ createdAt: { gte: from, lte: to } }, { updatedAt: { gte: from, lte: to } }],
+          companyId: user.company.id,
+          OR: [
+            { createdAt: { gte: from, lte: to } },
+            { updatedAt: { gte: from, lte: to } },
+          ],
         },
         select: {
           id: true,
@@ -121,11 +155,14 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     if (tables.includes("orders")) {
       data.orders = await prisma.serviceOrder.findMany({
         where: {
-          companyId: user.companyId,
-          OR: [{ createdAt: { gte: from, lte: to } }, { updatedAt: { gte: from, lte: to } }],
+          companyId: user.company.id,
+          OR: [
+            { createdAt: { gte: from, lte: to } },
+            { updatedAt: { gte: from, lte: to } },
+          ],
         },
         include: {
-          client: { select: { name: true, email: true, phone: true } },
+          client: { select: { nome: true, email: true, telefone: true } },
           technician: { select: { name: true, email: true } },
           items: {
             include: {
@@ -140,7 +177,7 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     if (tables.includes("activities")) {
       data.activities = await prisma.activity.findMany({
         where: {
-          order: { companyId: user.companyId },
+          order: { companyId: user.company.id },
           createdAt: { gte: from, lte: to },
         },
         include: {
@@ -154,17 +191,21 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     if (tables.includes("invoices")) {
       data.invoices = await prisma.invoice.findMany({
         where: {
-          companyId: user.companyId,
-          OR: [{ createdAt: { gte: from, lte: to } }, { updatedAt: { gte: from, lte: to } }],
+          companyId: user.company.id,
+          OR: [
+            { createdAt: { gte: from, lte: to } },
+            { updatedAt: { gte: from, lte: to } },
+          ],
         },
         include: {
-          order: { select: { orderNumber: true, client: { select: { name: true } } } },
+          order: {
+            select: { orderNumber: true, client: { select: { nome: true } } },
+          },
         },
         take: 5000,
       })
     }
 
-    // Fill empty arrays for missing tables
     allowedTables.forEach((table) => {
       if (!data[table]) {
         data[table] = []
@@ -172,11 +213,15 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     })
 
     const buffer = await exportToExcel(data)
-    const fileName = `periodo_${format(from, "yyyy-MM-dd")}_${format(to, "yyyy-MM-dd")}.xlsx`
+    const fileName = `periodo_${format(from, "yyyy-MM-dd")}_${format(
+      to,
+      "yyyy-MM-dd"
+    )}.xlsx`
 
     return new NextResponse(buffer, {
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Content-Length": buffer.length.toString(),
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -186,6 +231,9 @@ export const GET = createApiHandler(async (request: NextRequest) => {
     })
   } catch (dbError) {
     console.error("[v0] Database error during export:", dbError)
-    return NextResponse.json({ error: "Database error occurred during export" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Database error occurred during export" },
+      { status: 500 }
+    )
   }
 }, "export/period/GET")

@@ -1,9 +1,18 @@
 
 import type { Metadata, Viewport } from "next"
-import { GeistSans } from "geist/font/sans"
-import { GeistMono } from "geist/font/mono"
+import nextFontLocal from "next/font/local"
 import "./globals.css"
 import { AuthSessionProvider } from "@/components/auth-session-provider"
+
+const geistSans = nextFontLocal({
+  src: "../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2",
+  variable: "--font-geist-sans",
+})
+
+const geistMono = nextFontLocal({
+  src: "../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2",
+  variable: "--font-geist-mono",
+})
 
 export const metadata: Metadata = {
   title: {
@@ -37,7 +46,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <AuthSessionProvider>
           {children}
         </AuthSessionProvider>

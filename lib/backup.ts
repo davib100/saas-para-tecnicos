@@ -3,6 +3,7 @@ import * as ExcelJS from "exceljs"
 import cron from "node-cron"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { Decimal } from "@prisma/client/runtime/library";
 
 export type Client = {
   id: string
@@ -26,8 +27,8 @@ export type Product = {
   model?: string | null
   category?: string | null
   description?: string | null
-  price?: number | null
-  cost?: number | null
+  price?: Decimal | null
+  cost?: Decimal | null
   stock: number
   minStock: number
   barcode?: string | null
@@ -48,10 +49,10 @@ export type Order = {
   solution?: string | null
   status: string
   priority: string
-  estimatedValue?: number | null
-  finalValue?: number | null
-  laborCost?: number | null
-  partsCost?: number | null
+  estimatedValue?: Decimal | null
+  finalValue?: Decimal | null
+  laborCost?: Decimal | null
+  partsCost?: Decimal | null
   estimatedDate?: Date | null
   completedDate?: Date | null
   warrantyUntil?: Date | null
@@ -73,11 +74,11 @@ export type Invoice = {
   number: string
   order: { orderNumber: string; client: { nome: string } }
   status: string
-  total: number
-  dueDate?: Date
-  paidDate?: Date
-  paymentMethod?: string
-  notes?: string
+  total: Decimal
+  dueDate: Date
+  paidDate: Date | null
+  paymentMethod: string | null
+  notes: string | null
   createdAt: Date
   updatedAt?: Date
 }
@@ -172,9 +173,22 @@ const COMPANY_QUERIES = {
   }),
 } as const
 
-const formatCurrency = (value: number): string => `R$ ${value.toFixed(2).replace('.', ',')}`
-const formatDate = (date: Date): string => format(new Date(date), "dd/MM/yyyy", { locale: ptBR })
-const formatDateTime = (date: Date): string => format(new Date(date), "dd/MM/yyyy HH:mm", { locale: ptBR })
+const formatCurrency = (value: Decimal | number | null): string => {
+  if (!value) return "R$ 0,00"
+  const numValue = typeof value === 'number' ? value : value.toNumber()
+  return `R$ ${numValue.toFixed(2).replace('.', ',')}`
+}
+
+const formatDate = (date: Date | null): string => {
+  if (!date) return ""
+  return format(new Date(date), "dd/MM/yyyy", { locale: ptBR })
+}
+
+const formatDateTime = (date: Date | null): string => {
+  if (!date) return ""
+  return format(new Date(date), "dd/MM/yyyy HH:mm", { locale: ptBR })
+}
+
 const formatBoolean = (value: boolean): string => value ? "Sim" : "Não"
 
 const WORKSHEET_CONFIGS: Record<string, WorksheetConfig> = {
@@ -238,7 +252,7 @@ const WORKSHEET_CONFIGS: Record<string, WorksheetConfig> = {
       { key: "partsCost", header: "Custo Peças", width: 18, format: formatCurrency },
       { key: "estimatedDate", header: "Data Estimada", width: 18, format: formatDate },
       { key: "completedDate", header: "Data Conclusão", width: 18, format: formatDate },
-      { key: "warrantyDays", header: "Dias Garantia", width: 15 },
+      { key: "warrantyUntil", header: "Garantia Até", width: 18, format: formatDate },
       { key: "technicianName", header: "Técnico", width: 25 },
       { key: "observations", header: "Observações", width: 40 },
       { key: "createdAt", header: "Data Criação", width: 20, format: formatDateTime },
@@ -307,8 +321,8 @@ const transformDataForExport = (rawData: BackupData): Record<string, any[]> => {
       model: product.model || "",
       category: product.category || "",
       description: product.description || "",
-      price: product.price || 0,
-      cost: product.cost || 0,
+      price: product.price ? product.price.toNumber() : 0,
+      cost: product.cost ? product.cost.toNumber() : 0,
       stock: product.stock,
       minStock: product.minStock,
       barcode: product.barcode || "",
@@ -328,10 +342,10 @@ const transformDataForExport = (rawData: BackupData): Record<string, any[]> => {
       solution: order.solution || "",
       status: order.status,
       priority: order.priority,
-      estimatedValue: order.estimatedValue || 0,
-      finalValue: order.finalValue || 0,
-      laborCost: order.laborCost || 0,
-      partsCost: order.partsCost || 0,
+      estimatedValue: order.estimatedValue ? order.estimatedValue.toNumber() : 0,
+      finalValue: order.finalValue ? order.finalValue.toNumber() : 0,
+      laborCost: order.laborCost ? order.laborCost.toNumber() : 0,
+      partsCost: order.partsCost ? order.partsCost.toNumber() : 0,
       estimatedDate: order.estimatedDate,
       completedDate: order.completedDate,
       warrantyUntil: order.warrantyUntil,
@@ -353,7 +367,7 @@ const transformDataForExport = (rawData: BackupData): Record<string, any[]> => {
       orderNumber: invoice.order.orderNumber,
       clientName: invoice.order.client.nome,
       status: invoice.status,
-      amount: invoice.total,
+      amount: invoice.total.toNumber(),
       dueDate: invoice.dueDate,
       paidDate: invoice.paidDate,
       paymentMethod: invoice.paymentMethod || "",
@@ -512,7 +526,7 @@ export async function exportToExcel(data: BackupData, fileName?: string, exportT
     await Promise.all(worksheetPromises)
 
     const buffer = await workbook.xlsx.writeBuffer()
-    console.log(`[EXPORT] Excel file created successfully. Size: ${buffer.length} bytes`)
+    console.log(`[EXPORT] Excel file created successfully. Size: ${buffer.byteLength} bytes`)
     
     return Buffer.from(buffer)
   } catch (error) {
@@ -535,7 +549,7 @@ export async function saveDailyBackup(companyId: string): Promise<string> {
         type: "DAILY",
         status: "COMPLETED",
         fileName,
-        fileSize: buffer.length,
+        fileSize: buffer.byteLength,
         companyId,
         completedAt: new Date(),
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -555,6 +569,7 @@ export async function saveDailyBackup(companyId: string): Promise<string> {
         type: "DAILY",
         status: "FAILED",
         fileName: `backup_falhou_${format(new Date(), "yyyy-MM-dd_HH-mm-ss")}.xlsx`,
+        fileSize: 0,
         companyId,
         errorMessage: error instanceof Error ? error.message : "Unknown error",
       },

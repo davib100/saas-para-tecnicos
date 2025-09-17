@@ -1,6 +1,6 @@
 import type { AuthOptions } from 'next-auth'
 import CredentialsProvider from "next-auth/providers/credentials"
-import { authenticateUser } from "./auth-logic"
+import { authenticateUser } from "./server/auth-logic"
 
 export const authOptions: AuthOptions = {
   session: {
